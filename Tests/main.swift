@@ -22,6 +22,7 @@ placementTests()
 cecTests()
 displayIdentityMigrationTests()
 displayRestoreTests()
+panelSizeTests()
 
 if failures > 0 {
     print("\(failures) test(s) failed")

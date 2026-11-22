@@ -43,10 +43,16 @@ struct Display: Identifiable {
     let current: ScreenMode
     let currentModeIsPublic: Bool
     let modes: [ScreenMode]
-    let panel: Dimensions?
+    let detectedPanel: PanelSize
+    let panelSizeOptions: [Dimensions]
+    let panelIsRotated: Bool
+    var panelOverride: Dimensions? = nil
     let location: String?
     let edr: CGFloat?
     let color: DisplayColor?
+
+    var panel: Dimensions? { panelOverride ?? detectedPanel.dimensions }
+    var panelIsInferred: Bool { panelOverride == nil && detectedPanel.isInferred }
 
     var category: String {
         if builtIn { return "Встроенный" }
@@ -56,8 +62,8 @@ struct Display: Identifiable {
 
     var recommendations: [(String, ScreenMode)] {
         var result: [(String, ScreenMode)] = []
-        let aspect = (panel ?? current.key.desktop).aspect
-        let relevant = modes.filter { abs($0.key.desktop.aspect / aspect - 1) < 0.035 }
+        let referenceSize = panel ?? current.key.desktop
+        let relevant = modes.filter { $0.key.desktop.matchesAspect(of: referenceSize) }
         func choose(_ options: [ScreenMode], nearestWidth width: Int? = nil) -> ScreenMode? {
             options.min { a, b in
                 if let width {
@@ -122,7 +128,9 @@ private enum DisplayMetadata {
 }
 
 @MainActor
-func displays(among ids: [CGDirectDisplayID] = onlineDisplayIDs()) -> [Display] {
+func displays(
+    among ids: [CGDirectDisplayID] = onlineDisplayIDs(), panelOverrides: [String: Dimensions] = [:]
+) -> [Display] {
     let screens = Dictionary(NSScreen.screens.compactMap { screen -> (CGDirectDisplayID, NSScreen)? in
         guard let n = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
         return (n.uint32Value, screen)
@@ -158,7 +166,7 @@ func displays(among ids: [CGDirectDisplayID] = onlineDisplayIDs()) -> [Display] 
         // IOGraphics kDisplayModeNativeFlag identifies modes using native output timings.
         let native = publicModes.filter { ($0.raw?.ioFlags ?? 0) & 0x0200_0000 != 0 }
             .max { $0.key.rendering.area < $1.key.rendering.area }?.key.rendering
-        let rotation = Int(CGDisplayRotation(id).rounded()) % 180
+        let panelIsRotated = Int(CGDisplayRotation(id).rounded()) % 180 != 0
         let attributes = location.flatMap { path -> Dimensions? in
             let framebuffer = IORegistryEntryCopyFromPath(kIOMainPortDefault, path as CFString)
             guard framebuffer != 0 else { return nil }
@@ -169,16 +177,28 @@ func displays(among ids: [CGDirectDisplayID] = onlineDisplayIDs()) -> [Display] 
                   width > 0, height > 0 else { return nil }
             return Dimensions(width: width, height: height)
         }
-        let panel = (edid ?? attributes).map {
-            rotation == 0 ? $0 : Dimensions(width: $0.height, height: $0.width)
-        } ?? native
+        let allowsPanelOverride = !builtIn && edid == nil && attributes == nil
+        let oneXModes = allowsPanelOverride
+            ? offered.filter { $0.width == $0.pixelWidth && $0.height == $0.pixelHeight }.map(ModeKey.init)
+            : []
+        let detectedPanel = detectPanelSize(
+            edid: edid?.rotated(ifQuarterTurn: panelIsRotated),
+            nativeFormat: attributes?.rotated(ifQuarterTurn: panelIsRotated),
+            nativeFlag: native, oneXModes: oneXModes, builtIn: builtIn
+        )
+        let panelSizeOptions = panelSizes(from: oneXModes, matching: native ?? current.key.desktop)
+        let panelOverride = panelOverrides[identity].flatMap { saved -> Dimensions? in
+            let size = saved.rotated(ifQuarterTurn: panelIsRotated)
+            return panelSizeOptions.contains(size) ? size : nil
+        }
         return Display(id: id, identity: identity, title: name, builtIn: builtIn,
                        isVirtual: info["kCGDisplayIsVirtualDevice"] as? Bool == true,
                        isInMirrorSet: CGDisplayIsInMirrorSet(id) != 0,
                        isMain: CGDisplayIsMain(id) != 0, mirrors: CGDisplayMirrorsDisplay(id),
                        bounds: CGDisplayBounds(id), current: current,
                        currentModeIsPublic: currentModeIsPublic, modes: modes,
-                       panel: panel, location: location,
+                       detectedPanel: detectedPanel, panelSizeOptions: panelSizeOptions,
+                       panelIsRotated: panelIsRotated, panelOverride: panelOverride, location: location,
                        edr: screen?.maximumPotentialExtendedDynamicRangeColorComponentValue, color: DisplayColor.read(id))
     }
 }

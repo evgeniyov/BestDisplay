@@ -9,7 +9,7 @@ enum ProfileCommand {
     static func run(_ arguments: [String]) -> Int32 {
         switch arguments.first {
         case "--report" where arguments.count == 1:
-            let screens = displays()
+            let screens = displays(panelOverrides: DisplayManager.storedPanelSizes())
             print(displayReport(screens))
             return screens.isEmpty ? 1 : 0
         case "--profiles" where arguments.count == 1:

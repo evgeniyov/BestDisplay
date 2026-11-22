@@ -130,6 +130,8 @@ final class DisplayManager {
     let edrPreview = EDRPreview()
     let storage: UserDefaults
     private let rememberedKey = "preferredDisplayModes"
+    private static let panelOverridesKey = "displayPanelSizeOverrides"
+    private var panelOverrides: [String: Dimensions]
     private let profilesKey = "displayProfiles"
     private let historyKey = "displayHistory"
     private let topologyKey = "protectedDisplayTopologies"
@@ -174,6 +176,7 @@ final class DisplayManager {
 
     init(storage: UserDefaults = .standard) {
         self.storage = storage
+        panelOverrides = Self.storedPanelSizes(in: storage)
         brightnessGroup = Set(storage.stringArray(forKey: brightnessGroupKey) ?? [])
         if let data = storage.data(forKey: topologyKey),
            let stored = try? JSONDecoder().decode([DisplayTopology].self, from: data) {
@@ -234,7 +237,7 @@ final class DisplayManager {
     func refresh() {
         let previousIdentity = selected?.identity
         let onlineIDs = onlineDisplayIDs()
-        screens = displays(among: onlineIDs)
+        screens = displays(among: onlineIDs, panelOverrides: panelOverrides)
         for display in screens {
             if let name = DisplayHistoryEntry.Screen.knownName(display.title) {
                 lastDisplayNames[display.identity] = name
@@ -594,6 +597,21 @@ final class DisplayManager {
 
     private func persist(_ value: some Encodable, for key: String) {
         if let data = try? JSONEncoder().encode(value) { storage.set(data, forKey: key) }
+    }
+
+    static func storedPanelSizes(in storage: UserDefaults = .standard) -> [String: Dimensions] {
+        guard let data = storage.data(forKey: panelOverridesKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: Dimensions].self, from: data)) ?? [:]
+    }
+
+    func setPanelSize(_ size: Dimensions?, for identity: String) {
+        guard let index = screens.firstIndex(where: { $0.identity == identity }),
+              !screens[index].panelSizeOptions.isEmpty else { return }
+        if let size, !screens[index].panelSizeOptions.contains(size) { return }
+        screens[index].panelOverride = size
+        guard !identity.hasPrefix("session-") else { return }
+        panelOverrides[identity] = size?.rotated(ifQuarterTurn: screens[index].panelIsRotated)
+        persist(panelOverrides, for: Self.panelOverridesKey)
     }
 
     func saveProfile(named input: String) {

@@ -321,7 +321,38 @@ struct DisplayPanel: View {
 
     @ViewBuilder
     private func metrics(for display: Display) -> some View {
-        metric("Панель", display.panel?.label ?? "Нет данных")
+        if display.panelSizeOptions.isEmpty {
+            metric("Панель", display.panel?.label ?? "Нет данных")
+        } else {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Панель").font(.caption).foregroundStyle(.secondary)
+                Menu {
+                    Picker("Панель", selection: Binding(
+                        get: { display.panelOverride },
+                        set: { manager.setPanelSize($0, for: display.identity) }
+                    )) {
+                        ForEach(display.panelSizeOptions, id: \.self) { size in
+                            Text(size.label).tag(Optional(size))
+                        }
+                        Text("Автоматически").tag(nil as Dimensions?)
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                } label: {
+                    Text(display.panel?.label ?? "Нет данных")
+                        .font(.callout.monospacedDigit().weight(.medium))
+                }
+                .menuStyle(.borderlessButton)
+                .menuOrder(.fixed)
+                .controlSize(.small)
+                .accessibilityLabel("Панель, \(display.panel?.label ?? "Нет данных")")
+                if display.panelIsInferred {
+                    Text("по частоте обновления").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
         metric("Рендер macOS", display.current.key.rendering.label)
         if let edr = display.edr {
             metric("Динамический диапазон", edr > 1 ? "EDR" : "SDR")

@@ -7,6 +7,14 @@ struct Dimensions: Codable, Equatable, Hashable, Sendable {
     var label: String { "\(width)×\(height)" }
     var area: Int { width * height }
     var aspect: Double { Double(width) / Double(height) }
+
+    func matchesAspect(of reference: Self) -> Bool {
+        abs(aspect / reference.aspect - 1) < 0.035
+    }
+
+    func rotated(ifQuarterTurn quarterTurn: Bool) -> Self {
+        quarterTurn ? Self(width: height, height: width) : self
+    }
 }
 
 struct ModeKey: Codable, Equatable, Hashable, Sendable {
