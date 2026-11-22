@@ -2,9 +2,11 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct DisplayExtrasView: View {
+struct DisplayExtrasView<MonitorControls: View, DimmingControls: View>: View {
     let manager: DisplayManager
     let display: Display
+    @ViewBuilder let monitor: () -> MonitorControls
+    @ViewBuilder let dimming: () -> DimmingControls
     @State private var options: HardwareOptions?
     @State private var loadedOptions = false
     @State private var busy = false
@@ -20,60 +22,75 @@ struct DisplayExtrasView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            let external = !display.builtIn && !display.isVirtual
+            PanelCard(
+                title: external ? "Монитор" : "Яркость дисплея",
+                detail: external
+                    ? "Меняй настройки монитора по DDC. Поддержка зависит от модели и подключения."
+                    : "Меняй яркость дисплея средствами macOS."
+            ) {
+                monitor()
+                if !display.builtIn, display.location != nil {
+                    Divider()
+                    hardware.disabled(!manager.canChangeDisplayConfiguration)
+                }
+            }
+            PanelCard(title: "Затемнение", detail: "Приглушает изображение, пока BestDisplay открыт.") {
+                dimming()
+            }
             if let color = display.color {
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Цветовой профиль", systemImage: "paintpalette").font(.headline)
+                PanelCard(title: "Цвет и ICC", detail: "Выбери цветовой профиль или настрой цвет рабочего стола.") {
                     Text(color.title).font(.callout).foregroundStyle(.secondary)
                     ViewThatFits(in: .horizontal) {
-                        HStack { colorButtons(showReset: color.customProfile != nil) }
-                        VStack(alignment: .leading) { colorButtons(showReset: color.customProfile != nil) }
+                        HStack(spacing: 8) { colorButtons(showReset: color.customProfile != nil) }
+                        VStack(alignment: .leading, spacing: 8) { colorButtons(showReset: color.customProfile != nil) }
                     }
-                }
-            }
-            if display.color != nil && !display.isInMirrorSet {
-                DisclosureGroup("Цвет рабочего стола и ICC", isExpanded: $showsCalibration) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        calibrationSlider("Контраст", value: $calibration.contrast, range: 0.75...1.3)
-                        calibrationSlider("Гамма", value: $calibration.gamma, range: 0.7...1.5)
-                        calibrationSlider("Красный", value: $calibration.red, range: 0.5...1)
-                        calibrationSlider("Зелёный", value: $calibration.green, range: 0.5...1)
-                        calibrationSlider("Синий", value: $calibration.blue, range: 0.5...1)
-                        ViewThatFits(in: .horizontal) {
-                            HStack { calibrationButtons }
-                            VStack(alignment: .leading) { calibrationButtons }
+                    if !display.isInMirrorSet {
+                        DisclosureGroup("Настроить цвет вручную", isExpanded: $showsCalibration) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                calibrationSlider("Контраст", value: $calibration.contrast, range: 0.75...1.3)
+                                calibrationSlider("Гамма", value: $calibration.gamma, range: 0.7...1.5)
+                                    .help("Меняй яркость полутонов. Нажми «Применить цвет», чтобы увидеть результат.")
+                                calibrationSlider("Красный", value: $calibration.red, range: 0.5...1)
+                                calibrationSlider("Зелёный", value: $calibration.green, range: 0.5...1)
+                                calibrationSlider("Синий", value: $calibration.blue, range: 0.5...1)
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 8) { calibrationButtons }
+                                    VStack(alignment: .leading, spacing: 8) { calibrationButtons }
+                                }
+                            }
+                            .padding(.top, 8)
                         }
+                        .help("Измени контраст, яркость полутонов и баланс красного, зелёного и синего.")
                     }
-                    .padding(.top, 6)
                 }
+                .disabled(!manager.canChangeDisplayConfiguration)
             }
-            Divider()
-            DisplayHDRView(manager: manager, display: display)
-            if !display.builtIn, display.location != nil {
-                Divider()
-                hardware
+            PanelCard(title: "HDR", detail: "Проверь, насколько яркие детали может показать дисплей.") {
+                DisplayHDRView(manager: manager, display: display)
             }
-            Divider()
-            HDMICECView()
-            if let audio {
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Системная громкость", systemImage: "speaker.wave.2").font(.headline)
+            .disabled(!manager.canChangeDisplayConfiguration)
+            PanelCard(title: "Звук", detail: "Меняй громкость выбранного в macOS аудиовыхода.") {
+                if let audio {
                     Text(audio.name).font(.caption).foregroundStyle(.secondary)
-                    HStack {
+                    HStack(spacing: 8) {
                         Slider(value: $volume, in: 0...1, step: 0.01, label: { Text("Громкость аудиовыхода") })
                             .labelsHidden()
+                            .help("Выбери громкость и нажми «Применить громкость».")
                         Text(volume.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit()
-                        Button("Применить") { applyAudio(audio) }
+                        Button("Применить громкость") { applyAudio(audio) }
                             .disabled(abs(audio.value - volume) < 0.005)
                     }
                 }
-            }
-            if #available(macOS 14.2, *) {
+                if #available(macOS 14.2, *) {
+                    if audio != nil { Divider() }
+                    softwareAudio
+                }
                 Divider()
-                softwareAudio
+                HDMICECView()
             }
+            .disabled(!manager.canChangeDisplayConfiguration)
         }
         .onAppear {
             readAudio()
@@ -82,19 +99,20 @@ struct DisplayExtrasView: View {
         .onChange(of: display.color) {
             calibration = manager.calibrations[display.identity] ?? Calibration()
         }
-        .disabled(!manager.canChangeDisplayConfiguration)
     }
 
     private var softwareAudio: some View {
         let control = manager.softwareVolume
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Программная громкость", systemImage: "waveform").font(.headline)
+                Label("Программная громкость", systemImage: "waveform").font(.callout.weight(.semibold))
                 Spacer()
                 if control.waiting || control.active {
                     Button("Выключить") { control.stop() }
+                        .help("Верни обычное управление громкостью.")
                 } else {
                     Button("Включить") { control.start() }
+                        .help("Используй эту регулировку, если macOS не даёт менять громкость аудиовыхода.")
                 }
             }
             if let output = control.outputName {
@@ -103,7 +121,8 @@ struct DisplayExtrasView: View {
             if control.active {
                 HStack {
                     Slider(value: Binding(get: { control.level }, set: { control.setLevel($0) }),
-                           in: 0...1, step: 0.01, label: { Text("Программный уровень аудио") }).labelsHidden()
+                           in: 0...1, step: 0.01, label: { Text("Программная громкость") }).labelsHidden()
+                        .help("Меняй громкость звука, который воспроизводит macOS.")
                     Text(control.level.formatted(.percent.precision(.fractionLength(0)))).monospacedDigit()
                 }
             }
@@ -124,13 +143,16 @@ struct DisplayExtrasView: View {
 
     @ViewBuilder
     private var calibrationButtons: some View {
-        Button("Применить") { manager.applyCalibration(calibration, to: display) }
-        Button("Снять фильтр") {
+        Button("Применить цвет") { manager.applyCalibration(calibration, to: display) }
+            .help("Примени выбранные настройки цвета к рабочему столу.")
+        Button("Вернуть цвет") {
             manager.removeCalibration(from: display)
             calibration = Calibration()
         }
+        .help("Убери ручные настройки цвета рабочего стола.")
         .disabled(manager.calibrations[display.identity] == nil)
         Button("Сохранить ICC…") { saveICC() }
+            .help("Запиши текущие настройки цвета в файл ICC.")
     }
 
     private func saveICC() {
@@ -143,7 +165,7 @@ struct DisplayExtrasView: View {
             guard response == .OK, let url = dialog.url else { return }
             do {
                 try settings.writeProfile(for: display, to: url)
-                manager.message = "Сохранён профиль «\(url.lastPathComponent)»."
+                manager.message = "Профиль «\(url.lastPathComponent)» сохранён."
             } catch {
                 manager.message = error.localizedDescription
             }
@@ -152,9 +174,12 @@ struct DisplayExtrasView: View {
 
     @ViewBuilder
     private func colorButtons(showReset: Bool) -> some View {
-        Button("Выбрать ICC…") { chooseICC() }.fixedSize(horizontal: true, vertical: false)
+        Button("Выбрать ICC…") { chooseICC() }
+            .help("Открой файл .icc или .icm с цветовым профилем для этого дисплея.")
+            .fixedSize(horizontal: true, vertical: false)
         if showReset {
-            Button("Заводской профиль") { manager.setColorProfile(DisplayColor(customProfile: nil), for: display.id) }
+            Button("Вернуть заводской профиль") { manager.setColorProfile(DisplayColor(customProfile: nil), for: display.id) }
+                .help("Убери выбранный файл ICC и верни профиль дисплея по умолчанию.")
                 .fixedSize(horizontal: true, vertical: false)
         }
     }
@@ -162,11 +187,13 @@ struct DisplayExtrasView: View {
     private var hardware: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Видеовход и питание").font(.headline)
+                Text("Видеовход и питание").font(.callout.weight(.semibold))
                 Spacer()
-                Button(loadedOptions ? "Обновить" : "Прочитать DDC") { loadHardware() }.disabled(busy)
+                Button("Прочитать входы и питание") { loadHardware() }
+                    .help("Запроси через DDC список видеовходов и режимов питания монитора.")
+                    .disabled(busy)
             }
-            if busy { ProgressView().controlSize(.small) }
+            if busy { ProgressView().controlSize(.small).accessibilityLabel("Обмен данными с монитором") }
             if loadedOptions, (options?.inputs.isEmpty ?? true) && (options?.powerModes.isEmpty ?? true) {
                 Text("Монитор не сообщил доступные видеовходы или режимы питания.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -174,12 +201,13 @@ struct DisplayExtrasView: View {
             if let options {
                 let choices = options.inputs
                 if !choices.isEmpty {
-                    Menu(options.currentInput.map { "Вход · \(HardwareOptions.inputLabel($0))" } ?? "Видеовход") {
+                    Menu(options.currentInput.map { "Вход: \(HardwareOptions.inputLabel($0))" } ?? "Видеовход") {
                         ForEach(choices) { choice in
                             Button(choice.name) { pending = PendingOption(choice: choice, feature: .input) }
                                 .disabled(choice.id == options.currentInput)
                         }
                     }
+                    .help("Выбери другой видеовход монитора. Для этого нужен второй активный дисплей.")
                     .disabled(busy || manager.screens.count < 2)
                 }
                 if !options.powerModes.isEmpty {
@@ -189,12 +217,13 @@ struct DisplayExtrasView: View {
                                 .disabled(choice.id == options.currentPower)
                         }
                     }
+                    .help("Измени режим питания монитора. Для этого нужен второй активный дисплей.")
                     .disabled(busy || manager.screens.count < 2)
                 }
             }
             if let pending, let options {
-                Text("Отправить «\(pending.choice.name)» на \(display.title)? Изображение на мониторе может пропасть.")
-                    .font(.caption)
+                Text("Отправить команду «\(pending.choice.name)» монитору \(display.title)? Изображение может пропасть.")
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Отмена") { self.pending = nil }
                     Button("Подтвердить") { applyHardware(pending, options: options) }

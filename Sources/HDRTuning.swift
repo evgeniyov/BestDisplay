@@ -85,7 +85,7 @@ final class HDRTuning {
 
     private func checkConnection(to target: MonitorTarget) throws {
         guard !disconnected, target.stillOnline else {
-            throw DisplayFailure("Монитор отключился во время настройки HDR.")
+            throw DisplayFailure("Дисплей отключился во время настройки HDR.")
         }
     }
 
@@ -153,18 +153,18 @@ private struct HDRTuningFooter: View {
             case .preparing:
                 ProgressView("Подготовка HDR…")
             case .shadows:
-                patternStep("Тени", "Двигай ползунок, пока не увидишь четыре плашки из пяти. Самая тёмная должна слиться с фоном.")
+                patternStep("Тени", "Двигай ползунок, пока не увидишь 4 из 5 квадратов. Самый тёмный должен слиться с фоном.")
             case .done:
-                Text("Готово").font(.title2)
+                Text("Яркость настроена").font(.title2)
                 Text("Яркость монитора в HDR: \(percent(tuning.confirmedBrightness)).")
             }
             if tuning.step != .preparing {
                 Text(headroomNote).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             HStack {
-                Button("Вернуть как было") { close(false) }
+                Button("Вернуть яркость") { close(false) }
                 if tuning.step == .done {
-                    Button("Оставить") { close(true) }.buttonStyle(.borderedProminent)
+                    Button("Оставить яркость") { close(true) }.buttonStyle(.borderedProminent)
                 } else if tuning.step != .preparing {
                     Button("Далее") { tuning.advance() }.buttonStyle(.borderedProminent)
                         .disabled(tuning.requestedBrightness != tuning.confirmedBrightness)
@@ -182,6 +182,7 @@ private struct HDRTuningFooter: View {
             Text(instruction).multilineTextAlignment(.center)
             HStack {
                 Slider(value: $tuning.requestedBrightness, in: 0...1, step: 0.01) { Text("Яркость HDR") }
+                    .help("Настрой яркость так, чтобы были видны 4 из 5 квадратов.")
                 Text(percent(tuning.requestedBrightness)).monospacedDigit().frame(width: 48, alignment: .trailing)
             }
             .frame(maxWidth: 440)
@@ -190,7 +191,7 @@ private struct HDRTuningFooter: View {
 
     private var headroomNote: String {
         let value = Double(tuning.headroom).formatted(.number.precision(.fractionLength(2)))
-        return "macOS даёт этому монитору запас HDR \(value)× над обычным белым. Яркие детали в HDR-видео будут светлее белого фона примерно во столько же раз."
+        return "Яркие детали в HDR-видео могут быть примерно в \(value) раза ярче обычного белого."
     }
 
     private func percent(_ brightness: Double) -> String {

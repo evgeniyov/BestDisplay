@@ -26,7 +26,7 @@ struct Calibration: Equatable {
         guard CGDisplayIsOnline(display.id) != 0, displayIdentity(display.id) == display.identity,
               let profile = ColorSyncProfileCreateWithDisplayID(display.id)?.takeRetainedValue(),
               let copy = ColorSyncProfileCreateMutableCopy(profile)?.takeRetainedValue() else {
-            throw DisplayFailure("Не удалось открыть действующий ICC-профиль дисплея.")
+            throw DisplayFailure("Не удалось открыть текущий профиль ICC дисплея.")
         }
         let entries = 256
         var count = 0
@@ -80,7 +80,7 @@ struct TransferTables {
     static func read(_ id: CGDirectDisplayID) throws -> Self {
         let capacity = CGDisplayGammaTableCapacity(id)
         guard capacity > 1, capacity <= 65_536 else {
-            throw DisplayFailure("Дисплей не предоставляет цветовую таблицу рабочего стола.")
+            throw DisplayFailure("Таблица цветов рабочего стола недоступна для этого дисплея.")
         }
         var red = [Float](repeating: 0, count: Int(capacity))
         var green = red

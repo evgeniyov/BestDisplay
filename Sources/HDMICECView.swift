@@ -12,26 +12,31 @@ struct HDMICECView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("HDMI-CEC", systemImage: "tv").font(.headline)
+                Label("Управление телевизором", systemImage: "tv").font(.callout.weight(.semibold))
                 Spacer()
-                Button("Найти адаптеры") { scan() }.disabled(busy)
+                Button("Найти адаптеры") { scan() }
+                    .help("Найди подключённые адаптеры для команд HDMI-CEC.")
+                    .disabled(busy)
             }
             if client == nil {
-                Text("Для управления ТВ нужен USB–CEC адаптер и утилита cec-client.")
+                Text("Подключи адаптер USB-CEC и установи cec-client для управления телевизором по HDMI.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if !adapters.isEmpty {
-                Picker("Адаптер", selection: $selected) {
+                Picker("Адаптер USB-CEC", selection: $selected) {
                     ForEach(adapters, id: \.self) { port in Text(port).tag(Optional(port)) }
                 }
-                Picker("HDMI-вход ТВ", selection: $hdmiPort) {
+                .help("Выбери адаптер, к которому подключён телевизор.")
+                Picker("HDMI-вход телевизора", selection: $hdmiPort) {
                     Text("Автоматически").tag(0)
                     ForEach(1...15, id: \.self) { port in Text("HDMI \(port)").tag(port) }
                 }
+                .help("Укажи, к какому HDMI-входу телевизора подключён Mac.")
                 .disabled(busy)
                 HStack {
-                    Button("Состояние ТВ") { checkPower() }
-                    Menu("Управление ТВ") {
+                    Button("Проверить питание") { checkPower() }
+                        .help("Узнай, включён ли телевизор.")
+                    Menu("Команда телевизору") {
                         ForEach(CECClient.TVCommand.allCases) { command in
                             Button(command.title) { pending = command }
                         }
@@ -64,7 +69,7 @@ struct HDMICECView: View {
         perform {
             adapters = try await client.adapters()
             if !adapters.contains(selected ?? "") { selected = adapters.first }
-            result = adapters.isEmpty ? "USB–CEC адаптеры не найдены." : nil
+            result = adapters.isEmpty ? "Адаптеры USB-CEC не найдены." : nil
         }
     }
 
@@ -78,7 +83,7 @@ struct HDMICECView: View {
         guard let client, let selected else { return }
         perform {
             try await client.send(command, on: selected, hdmiPort: hdmiPort == 0 ? nil : hdmiPort)
-            result = "Команда отправлена. Можно запросить состояние ТВ."
+            result = "Команда отправлена. Нажми «Проверить питание», чтобы узнать состояние телевизора."
         }
     }
 

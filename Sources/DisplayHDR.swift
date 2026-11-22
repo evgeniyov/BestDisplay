@@ -25,7 +25,7 @@ enum DisplayHDRMode {
     @MainActor
     static func set(_ value: Bool, on display: Display) async throws {
         guard displayIdentity(display.id) == display.identity, let original = status(for: display),
-              let change else { throw DisplayFailure("Этот дисплей не предоставляет переключатель HDR.") }
+              let change else { throw DisplayFailure("Для этого дисплея нельзя переключить HDR.") }
         guard original != value else { return }
         change(display.id, value)
         for _ in 0..<30 {
@@ -92,7 +92,7 @@ struct DisplayReferencePresets {
     static func set(_ index: UInt32, on display: Display) async throws {
         guard displayIdentity(display.id) == display.identity, let before = read(display),
               before.options.contains(where: { $0.id == index }), let change else {
-            throw DisplayFailure("Этот дисплей не предоставляет указанный профиль XDR.")
+            throw DisplayFailure("Выбранный профиль XDR недоступен для этого дисплея.")
         }
         guard index != before.active else { return }
         guard change(display.id, index) else { throw DisplayFailure("macOS отклонила профиль XDR.") }
@@ -144,7 +144,7 @@ final class EDRPreview: NSObject, NSWindowDelegate {
     func show(for display: Display) throws {
         guard let edr = EDRInfo(display), edr.potential > 1.001, let device = MTLCreateSystemDefaultDevice(),
               let patches = EDRPatches(edrDevice: device) else {
-            throw DisplayFailure("На этом дисплее macOS не сообщает доступный запас EDR.")
+            throw DisplayFailure("macOS не сообщила предел яркости HDR для этого дисплея.")
         }
 
         let frame = edr.screen.visibleFrame
@@ -159,7 +159,7 @@ final class EDRPreview: NSObject, NSWindowDelegate {
             return label
         })
         labels.distribution = .fillEqually
-        let description = NSTextField(labelWithString: "Максимальный запас EDR по данным macOS: \(Double(edr.potential).formatted(.number.precision(.fractionLength(2))))×")
+        let description = NSTextField(labelWithString: "Предел яркости HDR относительно белого по данным macOS: \(Double(edr.potential).formatted(.number.precision(.fractionLength(2))))×")
         description.alignment = .center
         description.textColor = .secondaryLabelColor
         let content = NSView()

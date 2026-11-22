@@ -89,7 +89,7 @@ extension DisplayManager {
         isWritingMonitor = true
         defer { isWritingMonitor = false }
         guard let brightness = await monitorControls.brightness(of: sourceTarget) else {
-            message = "Не удалось прочитать аппаратную яркость \(source.title)."
+            message = "Не удалось прочитать яркость дисплея \(source.title)."
             return
         }
         await applyBrightness(brightness.value, to: targets)
@@ -115,10 +115,10 @@ extension DisplayManager {
             }
         }
         if applied > 0 {
-            let result = "Яркость передана на дисплеи: \(applied)."
-            message = failed == 0 ? result : "\(result) Не подтвердили изменение: \(failed)."
+            let result = "Дисплеев с выбранной яркостью: \(applied)."
+            message = failed == 0 ? result : "\(result) Дисплеев без подтверждения: \(failed)."
         } else {
-            message = "Других дисплеев с доступной регулировкой яркости не найдено."
+            message = "BestDisplay не нашёл других дисплеев с доступной регулировкой яркости."
         }
     }
 }

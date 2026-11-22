@@ -30,35 +30,35 @@ final class SoftwareVolume {
         var status: OSStatus = 0
         guard let backend = BDSoftwareVolume(output: output, status: &status) else {
             message = status == kAudioHardwareUnsupportedOperationError
-                ? "Выход должен иметь один стереопоток без входных каналов."
-                : "Не удалось запустить Core Audio (\(status))."
+                ? "Выбери аудиовыход с одним стереопотоком. Входных каналов быть не должно."
+                : "Не удалось запустить Core Audio. Код ошибки \(status)."
             return
         }
         tap = backend
         level = 1
         outputName = SystemAudio.name(of: output)
         waiting = true
-        message = "Разреши доступ к системному аудио, если macOS спросит, затем воспроизведи звук."
+        message = "Разреши запись системного звука по запросу macOS. Затем воспроизведи звук."
         let deadline = ProcessInfo.processInfo.systemUptime + 35
         monitor = Task { [weak self, weak backend] in
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
                 guard let self, let backend else { return }
                 if SystemAudio.defaultOutput() != backend.output || backend.hasFormatError {
-                    self.stop("Аудиовыход или его формат изменился. Программная громкость выключена.")
+                    self.stop("Изменился аудиовыход или формат звука. Программная громкость выключена.")
                     return
                 }
                 if self.waiting, backend.hasSignal {
                     let result = backend.engage()
                     guard result == 0 else {
-                        self.stop("macOS не разрешила обработку аудиовыхода (\(result)).")
+                        self.stop("macOS не разрешила обработку звука. Код ошибки \(result).")
                         return
                     }
                     self.waiting = false
                     self.active = true
                     self.message = nil
                 } else if self.waiting, ProcessInfo.processInfo.systemUptime >= deadline {
-                    self.stop("Тестовый звук не получен. Проверь разрешение на запись системного аудио и повтори.")
+                    self.stop("BestDisplay не получил тестовый звук. Проверь разрешение на запись системного звука и повтори попытку.")
                     return
                 }
             }

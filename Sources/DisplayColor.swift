@@ -23,7 +23,7 @@ extension DisplayColor {
 
     func validate() throws {
         guard let url = customProfile else { return }
-        let problem = DisplayFailure("Файл «\(url.lastPathComponent)» не является доступным RGB-профилем дисплея.")
+        let problem = DisplayFailure("Не удалось открыть «\(url.lastPathComponent)» как цветовой профиль RGB для дисплея.")
         guard url.isFileURL, let reader = try? FileHandle(forReadingFrom: url) else { throw problem }
         defer { try? reader.close() }
         guard let header = try? reader.read(upToCount: 128), header.count == 128,
@@ -47,7 +47,7 @@ extension DisplayColor {
         let profiles = [defaultKey as String: value]
         guard ColorSyncDeviceSetCustomProfiles(deviceClass, uuid, profiles as CFDictionary),
               Self.read(display.id) == self else {
-            throw DisplayFailure("macOS не подтвердила цветовой профиль для «\(display.title)».")
+            throw DisplayFailure("macOS не подтвердила цветовой профиль дисплея «\(display.title)».")
         }
     }
 }

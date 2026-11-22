@@ -30,7 +30,7 @@ struct CubeLUT: Sendable {
                 let rgb = fields.compactMap { Float($0) }
                 guard size > 0, fields.count == 3, rgb.count == 3, rgb.allSatisfy(\.isFinite),
                       samples.count < size * size * size * 4 else {
-                    throw DisplayFailure("В файле ожидается таблица 3D LUT в формате .cube.")
+                    throw DisplayFailure("Выбери файл .cube с таблицей цветов 3D LUT.")
                 }
                 samples += rgb
                 samples.append(1)

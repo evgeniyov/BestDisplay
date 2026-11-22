@@ -10,23 +10,25 @@ struct DisplayHDRView: View {
     var body: some View {
         let enabled = manager.hdrModes[display.id]
         VStack(alignment: .leading, spacing: 8) {
-            Label("HDR / XDR", systemImage: "sun.max").font(.headline)
             if let info = EDRInfo(display), info.potential > 1.001 {
-                Text("Запас EDR до \(Double(info.potential).formatted(.number.precision(.fractionLength(2))))×")
+                Text("Предел яркости HDR относительно белого: \(Double(info.potential).formatted(.number.precision(.fractionLength(2))))×")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Показать тест HDR") {
                     do { try manager.edrPreview.show(for: display) }
                     catch { manager.message = error.localizedDescription }
                 }
+                .help("Открой тестовые участки разной яркости на выбранном дисплее.")
             } else if enabled == nil {
-                Text("macOS сообщает только SDR для этого дисплея.")
+                Text("По данным macOS, доступен только стандартный диапазон яркости (SDR).")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let enabled {
                 Toggle("Использовать HDR", isOn: Binding(get: { enabled }, set: { setHDR($0) }))
+                    .help("Включи HDR для видео и приложений, которые его поддерживают.")
                     .disabled(busy || manager.isWritingMonitor || !manager.canChangeDisplayConfiguration)
                 if manager.hasDDCBrightness {
                     Button("Настроить HDR…") { Task { await manager.tuneHDR(on: display) } }
+                        .help("Подбери яркость монитора по пяти тестовым участкам.")
                         .disabled(busy || manager.isReadingMonitor || manager.isWritingMonitor || !manager.canChangeDisplayConfiguration)
                 }
             }
@@ -37,6 +39,8 @@ struct DisplayHDRView: View {
                             Button(preset.title) { setPreset(preset.id) }.disabled(preset.id == presets.active)
                         }
                     }
+                    .accessibilityLabel("Профиль XDR, \(active.name)")
+                    .help("Выбери набор настроек цвета и яркости дисплея.")
                     .disabled(busy || !manager.canChangeDisplayConfiguration)
                 }
             }

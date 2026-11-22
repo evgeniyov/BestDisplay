@@ -18,7 +18,7 @@ enum MonitorControl: String, CaseIterable, Sendable {
         switch self {
         case .brightness: "Яркость"
         case .contrast: "Контраст"
-        case .volume: "Громкость монитора"
+        case .volume: "Громкость"
         case .redGain: "Красный канал"
         case .greenGain: "Зелёный канал"
         case .blueGain: "Синий канал"
@@ -30,7 +30,7 @@ enum MonitorControl: String, CaseIterable, Sendable {
         case .brightness: "sun.max"
         case .contrast: "circle.lefthalf.filled"
         case .volume: "speaker.wave.2"
-        case .redGain, .greenGain, .blueGain: "circle.lefthalf.filled"
+        case .redGain, .greenGain, .blueGain: "circle.fill"
         }
     }
 
@@ -233,7 +233,7 @@ actor MonitorControls {
         let raw = UInt16((Double(current.maximum) * value).rounded())
         let displayValue = control == .brightness ? max(1, raw) : raw
         if !current.system, let result = setDDC(displayValue, for: control, target: target) { return result }
-        throw DisplayFailure("Монитор не подтвердил изменение. Обнови список доступных настроек.")
+        throw DisplayFailure("Монитор не подтвердил изменение. Нажми «Прочитать настройки», чтобы узнать текущее значение.")
     }
 
     func restoreHDRBrightness(_ original: ControlValue, target: MonitorTarget) throws {

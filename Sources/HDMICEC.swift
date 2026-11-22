@@ -12,8 +12,8 @@ struct CECClient: Sendable {
 
         var title: String {
             switch self {
-            case .wake: "Включить ТВ"
-            case .standby: "Перевести ТВ в ожидание"
+            case .wake: "Включить телевизор"
+            case .standby: "Перевести телевизор в режим ожидания"
             case .activeSource: "Выбрать HDMI-вход Mac"
             }
         }
@@ -80,11 +80,11 @@ struct CECClient: Sendable {
 
     private func runCommand(_ command: String, adapter: String, hdmiPort: Int? = nil) async throws -> String {
         guard adapter.hasPrefix("/dev/cu.") || adapter.hasPrefix("/dev/tty.") else {
-            throw DisplayFailure("HDMI-CEC адаптер больше недоступен.")
+            throw DisplayFailure("Адаптер HDMI-CEC больше недоступен.")
         }
         // Re-check the adapter list only when the last check is stale.
         if !isRecentlyVerified(adapter), try await !adapters().contains(adapter) {
-            throw DisplayFailure("HDMI-CEC адаптер больше недоступен.")
+            throw DisplayFailure("Адаптер HDMI-CEC больше недоступен.")
         }
         return try await execute(command, adapter: adapter, hdmiPort: hdmiPort)
     }
@@ -92,7 +92,7 @@ struct CECClient: Sendable {
     private func execute(_ command: String, adapter: String, hdmiPort: Int?) async throws -> String {
         var arguments = ["-s", "-t", "p", "-d", "1", "-aw", "0"]
         if let hdmiPort {
-            guard (1...15).contains(hdmiPort) else { throw DisplayFailure("Номер HDMI-входа вне диапазона 1–15.") }
+            guard (1...15).contains(hdmiPort) else { throw DisplayFailure("Укажи номер HDMI-входа от 1 до 15.") }
             arguments += ["-p", String(hdmiPort)]
         }
         arguments.append(adapter)
@@ -101,7 +101,7 @@ struct CECClient: Sendable {
         guard !failure.contains("unable to open"), !failure.contains("failed to open"),
               !failure.contains("connection lost"), !failure.contains("command not sent"),
               !failure.contains("cannot open"), !failure.contains("failed to transmit") else {
-            throw DisplayFailure("CEC-адаптер не подтвердил отправку HDMI-команды.")
+            throw DisplayFailure("Адаптер CEC не подтвердил отправку команды по HDMI.")
         }
         return output
     }
@@ -143,7 +143,7 @@ struct CECClient: Sendable {
                     try await Task.sleep(for: .milliseconds(100))
                     if task.isRunning { kill(task.processIdentifier, SIGKILL) }
                 }
-                throw DisplayFailure("CEC-адаптер не ответил вовремя.")
+                throw DisplayFailure("Адаптер CEC не ответил вовремя.")
             }
             let response = try FileHandle(forReadingFrom: output)
             defer { try? response.close() }

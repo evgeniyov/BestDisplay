@@ -195,7 +195,7 @@ final class LivePreview: NSObject, NSWindowDelegate {
     private func showPanel() {
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 640, height: 400),
                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "BestDisplay · Картинка в картинке"
+        window.title = "Картинка в картинке"
         window.minSize = CGSize(width: 360, height: 220)
         window.isReleasedWhenClosed = false
         window.hidesOnDeactivate = false
@@ -206,12 +206,15 @@ final class LivePreview: NSObject, NSWindowDelegate {
 
         let slider = NSSlider(value: 0, minValue: 0, maxValue: 1, target: self, action: #selector(sharpnessChanged(_:)))
         slider.setAccessibilityLabel("Резкость")
-        let lut = NSButton(title: "3D LUT…", target: self, action: #selector(chooseLUT))
+        slider.toolTip = "Подчеркни границы деталей в окне просмотра."
+        let lut = NSButton(title: "Выбрать LUT…", target: self, action: #selector(chooseLUT))
+        lut.toolTip = "Примени таблицу цветов из файла .cube к окну просмотра."
         lutButton = lut
-        let fullScreen = NSButton(title: "На весь экран", target: self, action: #selector(toggleFullScreen))
+        let fullScreen = NSButton(title: "Полноэкранный режим", target: self, action: #selector(toggleFullScreen))
+        fullScreen.toolTip = "Разверни окно просмотра на весь дисплей или верни прежний размер."
         let bar = NSStackView(views: [NSTextField(labelWithString: "Резкость"), slider, lut, fullScreen])
-        bar.spacing = 10
-        bar.edgeInsets = NSEdgeInsets(top: 7, left: 12, bottom: 7, right: 12)
+        bar.spacing = 8
+        bar.edgeInsets = NSEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
         let image = NSView()
         image.wantsLayer = true
         image.layerContentsRedrawPolicy = .never
@@ -251,7 +254,8 @@ final class LivePreview: NSObject, NSWindowDelegate {
         guard let frames, let panel else { return }
         if frames.effects.withLock({ $0.lut != nil }) {
             frames.effects.withLock { $0.lut = nil }
-            lutButton?.title = "3D LUT…"
+            lutButton?.title = "Выбрать LUT…"
+            lutButton?.toolTip = "Примени таблицу цветов из файла .cube к окну просмотра."
             return
         }
         let dialog = NSOpenPanel()
@@ -261,10 +265,11 @@ final class LivePreview: NSObject, NSWindowDelegate {
             guard response == .OK, let url = dialog.url, let self, self.frames === frames else { return }
             do {
                 let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                guard (1...12_000_000).contains(size) else { throw DisplayFailure("Файл LUT слишком большой или пустой.") }
+                guard (1...12_000_000).contains(size) else { throw DisplayFailure("Выбери непустой файл LUT размером до 12 МБ.") }
                 let lut = try CubeLUT(contents: String(contentsOf: url, encoding: .utf8))
                 frames.effects.withLock { $0.lut = lut }
-                self.lutButton?.title = "Сбросить LUT"
+                self.lutButton?.title = "Убрать LUT"
+                self.lutButton?.toolTip = "Убери таблицу цветов из окна просмотра."
             } catch {
                 let alert = NSAlert(error: error)
                 alert.beginSheetModal(for: panel)

@@ -44,20 +44,20 @@ struct DisplayPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if page.usesSelectedDisplay && manager.selected != nil { displayPicker }
+            if !manager.screens.isEmpty { displayPicker }
             if let preview = manager.preview {
                 previewBanner(preview)
-                    .padding(.top, page.usesSelectedDisplay ? 0 : 12)
+                    .padding(.top, manager.screens.isEmpty ? 8 : 0)
                 Divider()
             }
             navigation
-                .padding(.top, page.usesSelectedDisplay && manager.selected != nil && manager.preview == nil ? 0 : 12)
-                .padding(.bottom, 12)
+                .padding(.top, manager.screens.isEmpty || manager.preview != nil ? 8 : 0)
+                .padding(.bottom, 8)
             if page == .scale, allModes, let display = manager.selected {
                 modes(for: display)
             } else if page.usesSelectedDisplay && manager.selected == nil {
-                ContentUnavailableView("Ожидание дисплеев", systemImage: "display",
-                                       description: Text("Подключи монитор или открой BestDisplay в графическом сеансе macOS."))
+                ContentUnavailableView("Нет доступных дисплеев", systemImage: "display",
+                                       description: Text("Подключи дисплей или открой BestDisplay после входа в macOS."))
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -69,8 +69,8 @@ struct DisplayPanel: View {
                         case .history: DisplayHistoryView(manager: manager)
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 }
                 .defaultScrollAnchor(.top)
@@ -114,7 +114,7 @@ struct DisplayPanel: View {
             .labelsHidden()
         }
         .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
     }
 
     private var header: some View {
@@ -127,20 +127,21 @@ struct DisplayPanel: View {
                 .font(.system(size: 16, weight: .semibold))
             Spacer()
             Menu {
-                Button("Скопировать диагностику", systemImage: "doc.on.doc") {
+                Button("Скопировать отчёт о дисплеях", systemImage: "doc.on.doc") {
                     manager.refresh()
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(displayReport(manager.screens), forType: .string)
-                    manager.message = "Диагностика скопирована."
+                    manager.message = "Отчёт о дисплеях скопирован."
                 }
                 Button("Картинка в картинке…", systemImage: "pip", action: startLivePreview)
+                    .help("Выбери окно или дисплей для просмотра в отдельном окне поверх остальных.")
                 if let disconnected = manager.disconnectedDisplayName {
                     Button("Подключить \(disconnected)", systemImage: "display") {
                         Task { await manager.reconnectDisplay() }
                     }
                     .disabled(!manager.canChangeDisplayConfiguration)
                 }
-                Toggle("Запускать при входе", isOn: Binding(get: { manager.launchAtLogin }, set: { manager.setLogin($0) }))
+                Toggle("Запускать при входе в macOS", isOn: Binding(get: { manager.launchAtLogin }, set: { manager.setLogin($0) }))
                 Button("Настройки дисплеев macOS", systemImage: "gear") { openDisplaySettings() }
                 Divider()
                 Button("Выйти из BestDisplay", systemImage: "power") { NSApp.terminate(nil) }
@@ -154,6 +155,7 @@ struct DisplayPanel: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .accessibilityLabel("Настройки BestDisplay")
+            .help("Открой команды BestDisplay и настройки запуска.")
             Button(action: dismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
@@ -163,8 +165,8 @@ struct DisplayPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Закрыть панель")
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     private var displayPicker: some View {
@@ -198,46 +200,48 @@ struct DisplayPanel: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    .help("Выбери дисплей «\(screen.title)» для масштаба, управления и расположения.")
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
         }
         .scrollIndicators(.hidden)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
     }
 
     private func previewBanner(_ preview: DisplayPreview) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "timer").foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Откат через \(manager.secondsLeft) с")
+                Text("Возврат через \(manager.secondsLeft) с")
                     .font(.callout.weight(.semibold))
                     .monospacedDigit()
                 Text(preview.title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .help(preview.title)
             }
-            Spacer(minLength: 5)
-            Button("Вернуть") { manager.revertPreview() }
+            Spacer(minLength: 8)
+            Button("Вернуть настройки") { manager.revertPreview() }
                 .keyboardShortcut(.cancelAction)
-            Button("Оставить") { manager.keepPreview() }
+            Button("Оставить настройки") { manager.keepPreview() }
                 .buttonStyle(.borderedProminent)
         }
-        .padding(10)
-        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
-        .padding(.horizontal, 20)
-        .padding(.bottom, 12)
+        .padding(8)
+        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
     private func scale(for display: Display) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             Label(display.current.key.label, systemImage: "viewfinder")
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 8) {
                     metrics(for: display)
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -245,29 +249,21 @@ struct DisplayPanel: View {
                 }
             }
             if let panel = display.panel, panel != display.current.key.rendering {
-                Text("Рендер и панель имеют разное разрешение. Сравни читаемость текста в разных режимах.")
+                Text("macOS рисует изображение в другом разрешении. Сравни, как читается текст в разных режимах.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10))
+        .panelCardStyle()
         if !display.recommendations.isEmpty {
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Сравнить масштаб").font(.headline)
+            PanelCard(title: "Сравнить масштаб") {
                 ForEach(display.recommendations, id: \.1.id) { label, mode in
                     modeRow(mode, for: display, label: label)
                 }
-                Text("Aa · Тонкие линии, цифры и мелкий текст")
+                Text("Образец текста: Размер меняется при смене масштаба. 0123456789")
                     .font(.caption2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 5))
-                    .overlay { RoundedRectangle(cornerRadius: 5).strokeBorder(.primary.opacity(0.18), lineWidth: 0.5) }
-                    .accessibilityLabel("Образец мелкого текста")
+                    .foregroundStyle(.secondary)
             }
         }
         ViewThatFits(in: .horizontal) {
@@ -289,12 +285,13 @@ struct DisplayPanel: View {
         }
         if let saved = manager.remembered[display.identity] {
             HStack {
-                Text("При подключении · \(saved.label)")
+                Text("Сохранённый режим: \(saved.label)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 if saved != display.current.key {
-                    Button("Забыть") { manager.setRemembered(false, for: display.identity) }
+                    Button("Забыть режим") { manager.setRemembered(false, for: display.identity) }
+                        .help("Удали сохранённый режим для этого дисплея.")
                         .buttonStyle(.link)
                         .disabled(!manager.canChangeDisplayConfiguration)
                 }
@@ -304,18 +301,19 @@ struct DisplayPanel: View {
 
     private func modeListButton(for display: Display) -> some View {
         Button("Все режимы (\(display.modes.count))", systemImage: "list.bullet") { allModes = true }
+            .help("Открой список всех разрешений и частот для выбранного дисплея.")
             .fixedSize(horizontal: true, vertical: false)
     }
 
     private func rememberedModeButton(for display: Display) -> some View {
         let saved = manager.remembered[display.identity]
         let isRemembered = saved == display.current.key
-        let title = isRemembered ? "Забыть выбранный" : (saved == nil ? "Запомнить режим" : "Обновить сохранённый")
+        let title = isRemembered ? "Забыть режим" : (saved == nil ? "Запомнить режим" : "Обновить режим")
         return Button(title, systemImage: isRemembered ? "pin.slash" : "pin") {
             manager.setRemembered(!isRemembered, for: display.identity)
         }
-        .help(isRemembered ? "Перестать восстанавливать режим при подключении"
-            : "Восстанавливать этот режим при запуске, подключении и пробуждении")
+        .help(isRemembered ? "Удали сохранённый режим для этого дисплея."
+            : "Сохрани текущий режим для запуска BestDisplay, подключения и пробуждения.")
         .fixedSize(horizontal: true, vertical: false)
     }
 
@@ -345,15 +343,17 @@ struct DisplayPanel: View {
                 .menuStyle(.borderlessButton)
                 .menuOrder(.fixed)
                 .controlSize(.small)
+                .padding(.leading, -4)
+                .help("Выбери физическое разрешение дисплея для подсказок о масштабе.")
                 .accessibilityLabel("Панель, \(display.panel?.label ?? "Нет данных")")
                 if display.panelIsInferred {
-                    Text("по частоте обновления").font(.caption).foregroundStyle(.secondary)
+                    Text("оценка по частоте").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        metric("Рендер macOS", display.current.key.rendering.label)
+        metric("Изображение macOS", display.current.key.rendering.label)
         if let edr = display.edr {
             metric("Динамический диапазон", edr > 1 ? "EDR" : "SDR")
         }
@@ -387,6 +387,7 @@ struct DisplayPanel: View {
             } else {
                 Button("Проверить") { manager.tryMode(mode.key, display: display.identity) }
                     .disabled(!manager.canChangeDisplayConfiguration || display.mirrors != 0)
+                    .help("Включи режим на время. Подтверди его, чтобы оставить.")
                     .accessibilityLabel("Проверить \(mode.key.label)")
             }
         }
@@ -400,10 +401,12 @@ struct DisplayPanel: View {
                 Button("Назад", systemImage: "chevron.backward") { allModes = false }
                 TextField("Разрешение или частота", text: $filterText)
                     .textFieldStyle(.roundedBorder)
+                    .help("Введи размер, например 1920×1080, или частоту, например 60 Гц.")
                 Toggle("HiDPI", isOn: $showHiDPIOnly)
                     .toggleStyle(.checkbox)
+                    .help("Покажи режимы, в которых macOS рисует больше пикселей для чёткого текста.")
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 16)
             let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
                 .replacingOccurrences(of: "x", with: "×").replacingOccurrences(of: "х", with: "×")
             let available = display.modes.filter {
@@ -419,7 +422,7 @@ struct DisplayPanel: View {
                             Divider()
                         }
                     }
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 16)
                 }
             }
         }
@@ -427,24 +430,40 @@ struct DisplayPanel: View {
 
     @ViewBuilder
     private func controls(for display: Display) -> some View {
+        DisplayExtrasView(manager: manager, display: display) {
+            monitorControls(for: display)
+        } dimming: {
+            dimmingControls(for: display)
+        }
+        .id(display.identity)
+        .onChange(of: manager.hdrModes[display.id]) {
+            guard !manager.isTuningHDR else { return }
+            manager.clearMonitor()
+            manager.scanMonitor()
+        }
+    }
+
+    private func monitorControls(for display: Display) -> some View {
         let hdrEnabled = manager.hdrModes[display.id] == true
-        VStack(alignment: .leading, spacing: 9) {
-            HStack {
-                Text("Настройки монитора").font(.headline)
-                Spacer()
-                if manager.isReadingMonitor {
-                    ProgressView().controlSize(.small).accessibilityLabel("Чтение настроек")
-                }
-                Button("Обновить", systemImage: "arrow.clockwise") { manager.scanMonitor() }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Button("Прочитать настройки", systemImage: "arrow.clockwise") { manager.scanMonitor() }
+                    .help("Считай текущие значения и проверь, какие настройки доступны.")
                     .disabled(manager.isReadingMonitor || manager.isWritingMonitor)
+                if manager.isReadingMonitor || manager.isWritingMonitor {
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel(manager.isReadingMonitor ? "Чтение настроек" : "Запись настроек")
+                }
             }
             if !manager.isReadingMonitor && manager.monitorValues.isEmpty {
-                Text("Доступные аппаратные настройки не обнаружены. Проверь DDC/CI в меню монитора и способ подключения.")
+                Text(display.builtIn || display.isVirtual
+                     ? "Регулировка яркости недоступна для этого дисплея."
+                     : "Настройки недоступны. Включи DDC/CI в меню монитора и проверь подключение.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
             if hdrEnabled {
-                Text("В режиме HDR монитор не принимает контраст и цвет. Выключи HDR, чтобы изменить их.")
+                Text("Выключи HDR, чтобы менять контраст и цвет монитора.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -457,163 +476,171 @@ struct DisplayPanel: View {
                     .disabled(manager.isTuningHDR || (control.locksInHDR && (hdrEnabled || !manager.canChangeDisplayConfiguration)))
                 }
             }
+            brightnessGroupControls(for: display)
         }
-        Divider()
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Программное затемнение", systemImage: "moon")
-                .font(.headline)
-            let amount = manager.dimming[display.identity] ?? 0
-            HStack {
-                Slider(value: Binding(get: { manager.dimming[display.identity] ?? 0 }, set: { manager.dim(display.identity, by: $0) }),
-                       in: 0...0.8, label: { Text("Программное затемнение") })
-                    .labelsHidden()
-                    .disabled(display.mirrors != 0)
-                Text(amount.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.callout.monospacedDigit())
-                    .frame(width: 40, alignment: .trailing)
-                Button("Сбросить") { manager.dim(display.identity, by: 0) }
-                    .disabled(amount == 0)
-            }
-            Text("Затемнение действует, пока BestDisplay открыт.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func dimmingControls(for display: Display) -> some View {
+        let amount = manager.dimming[display.identity] ?? 0
+        HStack {
+            Slider(value: Binding(get: { manager.dimming[display.identity] ?? 0 }, set: { manager.dim(display.identity, by: $0) }),
+                   in: 0...0.8, label: { Text("Уровень затемнения") })
+                .labelsHidden()
+                .help("Затемни изображение на величину до 80%.")
+                .disabled(display.mirrors != 0)
+            Text(amount.formatted(.percent.precision(.fractionLength(0))))
+                .font(.callout.monospacedDigit())
+                .frame(width: 40, alignment: .trailing)
+            Button("Сбросить затемнение") { manager.dim(display.identity, by: 0) }
+                .disabled(amount == 0)
         }
+    }
+
+    @ViewBuilder
+    private func brightnessGroupControls(for display: Display) -> some View {
         if !display.isVirtual, !display.identity.hasPrefix("session-"),
            manager.screens.count > 1 || manager.brightnessGroup.contains(display.identity) {
-            Toggle("В группе яркости", isOn: Binding(
+            Toggle("Менять яркость вместе с группой", isOn: Binding(
                 get: { manager.brightnessGroup.contains(display.identity) },
                 set: { manager.setBrightnessGroupMember(display, enabled: $0) }
             ))
+            .help("Добавь дисплей в группу. Когда меняешь яркость одного дисплея в BestDisplay, остальные в группе получают то же значение.")
             .disabled(manager.isWritingMonitor)
-            if manager.brightnessGroup.contains(display.identity) {
-                Text("Изменения яркости в BestDisplay передаются другим дисплеям группы.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
         if manager.screens.count > 1, manager.monitorValues[.brightness] != nil {
             Button("Передать яркость другим дисплеям", systemImage: "sun.max") {
                 Task { await manager.syncBrightness(from: display.id) }
             }
+            .help("Один раз выставь текущую яркость на других дисплеях, которые поддерживают регулировку.")
             .disabled(manager.isWritingMonitor || manager.preview != nil)
-        }
-        DisplayExtrasView(manager: manager, display: display).id(display.identity)
-        .onChange(of: manager.hdrModes[display.id]) {
-            guard !manager.isTuningHDR else { return }
-            manager.clearMonitor()
-            manager.scanMonitor()
         }
     }
 
     @ViewBuilder
     private func arrangement(for display: Display) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Схема дисплеев").font(.headline)
+        PanelCard(title: "Схема", detail: "Выбери дисплей на схеме. Укажи, где он стоит относительно основного.") {
             layoutMap
-            HStack {
-                if !display.isMain {
-                    Menu("Относительно основного") {
-                        ForEach(Placement.allCases, id: \.self) { place in
-                            Button(place.rawValue) { manager.placeSelected(place) }
-                        }
-                    }
-                    Button("Сделать основным") { manager.makeSelectedMain() }
-                } else {
-                    Label("Основной дисплей", systemImage: "checkmark.circle")
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                }
-                Spacer()
-            }
-            .disabled(!manager.canChangeDisplayConfiguration || display.mirrors != 0)
-        }
-        if !display.builtIn, !display.isVirtual, display.location != nil,
-           BDCanRequestDisplayOrientation(), let orientation = DisplayOrientation.current(display.id) {
-            Menu("Поворот · \(orientation.title)") {
-                ForEach(DisplayOrientation.allCases, id: \.self) { angle in
-                    Button(angle.title) { manager.tryOrientation(angle, on: display) }
-                        .disabled(angle == orientation)
-                }
-            }
-            .disabled(display.isInMirrorSet || !manager.canChangeDisplayConfiguration)
-        }
-        if manager.canProtectTopology {
-            Toggle("Восстанавливать поворот и видеоповтор", isOn: Binding(
-                get: { manager.protectsCurrentTopology },
-                set: { manager.setTopologyProtection($0) }
-            ))
-            .disabled(!manager.canChangeDisplayConfiguration)
-        }
-        if manager.screens.count > 1 {
-            if display.isInMirrorSet {
-                Button("Отключить видеоповтор", systemImage: "display.2") { manager.stopMirroring(display.id) }
-                    .disabled(!manager.canChangeDisplayConfiguration)
-            } else {
-                Menu("Показывать изображение с…") {
-                    ForEach(manager.screens.filter { $0.id != display.id && !$0.isInMirrorSet }) { source in
-                        Button(source.title) { manager.tryMirror(display.id, of: source.id) }
+            if !display.isMain {
+                Menu("Положение относительно основного") {
+                    ForEach(Placement.allCases, id: \.self) { place in
+                        Button(place.rawValue) { manager.placeSelected(place) }
                     }
                 }
+                .help("Укажи, через какой край основного дисплея указатель перейдёт на выбранный.")
+                .disabled(!manager.canChangeDisplayConfiguration || display.mirrors != 0)
+            }
+            if manager.canDisconnect(display) {
+                Button("Отключить дисплей", systemImage: "display") { manager.disconnect(display.id) }
+                    .help("Убери выбранный дисплей из схемы, не отсоединяя кабель.")
+            }
+            if let disconnected = manager.disconnectedDisplayName {
+                Button {
+                    Task { await manager.reconnectDisplay() }
+                } label: {
+                    Label("Подключить \(disconnected)", systemImage: "display")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .help("Верни отключённый дисплей в схему.")
                 .disabled(!manager.canChangeDisplayConfiguration)
             }
         }
-        if manager.canDisconnect(display) {
-            Button("Отключить дисплей", systemImage: "display") { manager.disconnect(display.id) }
-        }
-        if let disconnected = manager.disconnectedDisplayName {
-            Button("Подключить \(disconnected)", systemImage: "display") {
-                Task { await manager.reconnectDisplay() }
-            }
-            .disabled(!manager.canChangeDisplayConfiguration)
-        }
-        Divider()
-        HStack {
-            Text("Виртуальный дисплей").font(.headline)
-            Spacer()
-            if manager.virtualID != nil {
-                Button("Отключить") { manager.removeVirtual() }
+        PanelCard(title: "Основной и поворот", detail: "Выбери основной дисплей или поверни изображение.") {
+            if display.isMain {
+                Label("Основной дисплей", systemImage: "checkmark.circle")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
             } else {
-                Button(virtualEditor ? "Скрыть" : "Создать…") { virtualEditor.toggle() }
+                Button("Сделать основным") { manager.makeSelectedMain() }
+                    .help("Назначь выбранный дисплей основным в macOS.")
+                    .disabled(!manager.canChangeDisplayConfiguration || display.mirrors != 0)
+            }
+            if !display.builtIn, !display.isVirtual, display.location != nil,
+               BDCanRequestDisplayOrientation(), let orientation = DisplayOrientation.current(display.id) {
+                Menu("Поворот: \(orientation.title)") {
+                    ForEach(DisplayOrientation.allCases, id: \.self) { angle in
+                        Button(angle.title) { manager.tryOrientation(angle, on: display) }
+                            .disabled(angle == orientation)
+                    }
+                }
+                .help("Выбери угол поворота изображения. Нажми «Оставить настройки», если результат подходит.")
+                .disabled(display.isInMirrorSet || !manager.canChangeDisplayConfiguration)
+            }
+        }
+        if manager.screens.count > 1 || manager.canProtectTopology {
+            PanelCard(title: "Видеоповтор", detail: "Показывает одно изображение на нескольких дисплеях.") {
+                if manager.screens.count > 1 {
+                    if display.isInMirrorSet {
+                        Button("Отключить видеоповтор", systemImage: "display.2") { manager.stopMirroring(display.id) }
+                            .help("Верни отдельные рабочие столы для этих дисплеев.")
+                            .disabled(!manager.canChangeDisplayConfiguration)
+                    } else {
+                        Menu("Выбрать источник") {
+                            ForEach(manager.screens.filter { $0.id != display.id && !$0.isInMirrorSet }) { source in
+                                Button(source.title) { manager.tryMirror(display.id, of: source.id) }
+                            }
+                        }
+                        .help("Выбери дисплей, изображение с которого будет видно и здесь.")
+                        .disabled(!manager.canChangeDisplayConfiguration)
+                    }
+                }
+                if manager.canProtectTopology {
+                    Toggle("Восстанавливать поворот и видеоповтор", isOn: Binding(
+                        get: { manager.protectsCurrentTopology },
+                        set: { manager.setTopologyProtection($0) }
+                    ))
+                    .help("Запомни текущий поворот и видеоповтор для этого набора дисплеев.")
+                    .disabled(!manager.canChangeDisplayConfiguration)
+                }
+            }
+        }
+        PanelCard(title: "Виртуальный дисплей", detail: "Добавляет рабочий стол без физического дисплея. Частота 60 Гц.") {
+            if manager.virtualID != nil {
+                Button("Отключить виртуальный дисплей") { manager.removeVirtual() }
+                    .help("Убери виртуальный рабочий стол.")
+            } else {
+                Button(virtualEditor ? "Скрыть параметры" : "Создать…") { virtualEditor.toggle() }
+                    .help("Открой поля ширины и высоты виртуального дисплея.")
+            }
+            if virtualEditor && manager.virtualID == nil {
+                HStack(spacing: 8) {
+                    TextField("Ширина", text: $virtualWidth).accessibilityLabel("Ширина")
+                        .help("Введи ширину рабочего стола в пикселях.")
+                    Text("×")
+                    TextField("Высота", text: $virtualHeight).accessibilityLabel("Высота")
+                        .help("Введи высоту рабочего стола в пикселях.")
+                    Toggle("HiDPI", isOn: $virtualHiDPI).toggleStyle(.checkbox)
+                        .help("Рисуй изображение вдвое шире и выше для чёткого текста.")
+                    Button("Подключить") {
+                        guard let width = Int(virtualWidth), let height = Int(virtualHeight) else {
+                            manager.message = "Введи ширину и высоту целыми числами."
+                            return
+                        }
+                        manager.createVirtual(width: width, height: height, hiDPI: virtualHiDPI)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .help("Создай виртуальный дисплей с указанными размерами.")
+                }
+                .textFieldStyle(.roundedBorder)
             }
         }
         .disabled(!manager.canChangeDisplayConfiguration)
-        if virtualEditor && manager.virtualID == nil {
-            HStack {
-                TextField("Ширина", text: $virtualWidth).accessibilityLabel("Ширина")
-                Text("×")
-                TextField("Высота", text: $virtualHeight).accessibilityLabel("Высота")
-                Toggle("HiDPI", isOn: $virtualHiDPI).toggleStyle(.checkbox)
-                Button("Подключить") {
-                    guard let width = Int(virtualWidth), let height = Int(virtualHeight) else {
-                        manager.message = "Введи ширину и высоту целыми числами."
-                        return
-                    }
-                    manager.createVirtual(width: width, height: height, hiDPI: virtualHiDPI)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .textFieldStyle(.roundedBorder)
-            .disabled(!manager.canChangeDisplayConfiguration)
-            Text("Дополнительный рабочий стол, 60 Гц. HiDPI удваивает разрешение рендера.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 
     private var layoutMap: some View {
         let independent = manager.screens.filter { $0.mirrors == 0 }
         let canvas = independent.reduce(CGRect.null) { $0.union($1.bounds) }
         return GeometryReader { geometry in
-            let scale = min((geometry.size.width - 24) / max(1, canvas.width),
-                            (geometry.size.height - 20) / max(1, canvas.height))
+            let scale = min((geometry.size.width - 16) / max(1, canvas.width),
+                            (geometry.size.height - 16) / max(1, canvas.height))
             if !canvas.isNull, scale > 0 {
                 ForEach(independent) { screen in
                     layoutTile(screen, canvas: canvas, scale: scale, container: geometry.size)
                 }
             }
         }
-        .frame(height: 127)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .frame(height: 112)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func layoutTile(_ screen: Display, canvas: CGRect, scale: CGFloat, container: CGSize) -> some View {
@@ -629,9 +656,14 @@ struct DisplayPanel: View {
         return Button {
             manager.select(screen.id)
         } label: {
-            VStack(spacing: 3) {
+            VStack(spacing: 0) {
                 if screen.isMain { Image(systemName: "menubar.rectangle") }
-                Text(screen.title).lineLimit(1).truncationMode(.tail)
+                ViewThatFits(in: .vertical) {
+                    Text(screen.builtIn ? "Встроенный" : screen.title)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: screen.builtIn ? "laptopcomputer" : "display")
+                }
             }
             .font(.caption2.weight(weight))
             .padding(4)
@@ -642,6 +674,7 @@ struct DisplayPanel: View {
             }
         }
         .buttonStyle(.plain)
+        .help("Выбери дисплей «\(screen.title)».")
         .accessibilityLabel(screen.title)
         .accessibilityAddTraits(traits)
         .frame(width: width, height: height)
@@ -664,8 +697,8 @@ struct DisplayPanel: View {
             }
         }
         .frame(minHeight: 20)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     private func openDisplaySettings() {
@@ -691,25 +724,57 @@ private struct HardwareSlider: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label(control.label, systemImage: control.symbol)
-                .font(.callout)
-            HStack {
-                Slider(value: $value, in: 0...1, step: 0.01, label: { Text(control.label) },
-                       onEditingChanged: { changed in
-                    editing = changed
-                    if !changed && abs(current.value - value) > 0.005 { commit(value) }
-                })
-                .labelsHidden()
-                Text(value.formatted(.percent.precision(.fractionLength(0))))
-                    .font(.callout.monospacedDigit())
-                    .frame(width: 42, alignment: .trailing)
-                Button("Применить") { commit(value) }
-                    .disabled(abs(current.value - value) <= 0.005)
+        HStack(spacing: 8) {
+            Label {
+                Text(control.label)
+            } icon: {
+                Image(systemName: control.symbol)
+                    .foregroundStyle(iconColor)
             }
+            .font(.callout)
+            .frame(width: 144, alignment: .leading)
+            .accessibilityHidden(true)
+            Slider(value: Binding(get: { value }, set: { newValue in
+                value = newValue
+                if !editing { commitIfChanged() }
+            }), in: 0...1, step: 0.01, label: { Text(control.label) },
+                   onEditingChanged: { changed in
+                editing = changed
+                if !changed { commitIfChanged() }
+            })
+            .labelsHidden()
+            .help(hint)
+            Text(value.formatted(.percent.precision(.fractionLength(0))))
+                .font(.callout.monospacedDigit())
+                .frame(width: 48, alignment: .trailing)
+                .accessibilityHidden(true)
         }
         .disabled(isWriting)
         .onChange(of: current.value) { if !editing { value = current.value } }
         .onChange(of: isWriting) { if !isWriting && !editing { value = current.value } }
+    }
+
+    private func commitIfChanged() {
+        if abs(current.value - value) > 0.005 { commit(value) }
+    }
+
+    private var iconColor: Color {
+        switch control {
+        case .redGain: .red
+        case .greenGain: .green
+        case .blueGain: .blue
+        default: .secondary
+        }
+    }
+
+    private var hint: String {
+        switch control {
+        case .brightness: current.system ? "Меняй яркость дисплея в macOS." : "Меняй яркость в настройках монитора."
+        case .contrast: "Меняй разницу между светлыми и тёмными участками."
+        case .volume: "Меняй громкость в настройках самого монитора."
+        case .redGain: "Меняй уровень красного в настройках монитора."
+        case .greenGain: "Меняй уровень зелёного в настройках монитора."
+        case .blueGain: "Меняй уровень синего в настройках монитора."
+        }
     }
 }

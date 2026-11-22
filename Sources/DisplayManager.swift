@@ -449,7 +449,7 @@ final class DisplayManager {
             if topologyProtectionFailed { lastProtectionTopology = actualTopology }
             let result = failure ?? (actualTopology == topology
                 ? "Поворот и видеоповтор восстановлены."
-                : "macOS не подтвердила защищённую конфигурацию.")
+                : "macOS не подтвердила восстановление поворота и видеоповтора.")
             addHistory([.protection], before: before, result: result)
             nextTopologyAttempt = ProcessInfo.processInfo.systemUptime + 5
             isChangingTopology = false
@@ -559,7 +559,7 @@ final class DisplayManager {
             }
         }
         if !unavailable.isEmpty {
-            let warning = "Недоступен сохранённый режим: \(unavailable.joined(separator: ", "))."
+            let warning = "Сохранённый режим недоступен для следующих дисплеев: \(unavailable.joined(separator: ", "))."
             message = warning
             result = changes.isEmpty ? warning : "\(result) \(warning)"
         }
@@ -675,7 +675,7 @@ final class DisplayManager {
         guard canChangeDisplayConfiguration else { return }
         refresh()
         guard canCaptureProfile else {
-            message = "Для сохранения профиля нужны физические дисплеи в режиме отдельных рабочих столов."
+            message = "Для сохранения профиля используй физические дисплеи с отдельными рабочими столами."
             return
         }
         let name = String(input.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
@@ -716,7 +716,7 @@ final class DisplayManager {
             try color.apply(to: display)
             refresh()
             updateProtectedProfile()
-            message = "Применён профиль «\(color.title)»."
+            message = "Профиль «\(color.title)» применён."
         } catch {
             message = error.localizedDescription
         }
@@ -732,7 +732,7 @@ final class DisplayManager {
             do {
                 try requested.write(display.id)
                 guard try TransferTables.read(display.id).matches(requested) else {
-                    throw DisplayFailure("macOS не подтвердила цветовой фильтр.")
+                    throw DisplayFailure("macOS не подтвердила ручные настройки цвета.")
                 }
             } catch {
                 try? current.write(display.id)
@@ -740,7 +740,7 @@ final class DisplayManager {
             }
             calibrationTables[display.identity] = (base, requested)
             calibrations[display.identity] = settings
-            message = "Цветовой фильтр применён к рабочему столу."
+            message = "Настройки цвета рабочего стола применены."
         } catch {
             message = error.localizedDescription
         }
@@ -751,7 +751,7 @@ final class DisplayManager {
         verification.cancel()
         do {
             try resetCalibration(for: display)
-            message = "Цветовой фильтр снят."
+            message = "Ручные настройки цвета рабочего стола отключены."
         } catch {
             message = error.localizedDescription
         }
@@ -854,11 +854,11 @@ final class DisplayManager {
 
     private func profileOperation(_ profile: DisplayProfile) throws -> (CGDisplayConfigRef) throws -> Void {
         guard canCaptureProfile, profile.matches(screens) else {
-            throw DisplayFailure("Подключи дисплеи, сохранённые в этом профиле.")
+            throw DisplayFailure("Подключи дисплеи из этого профиля.")
         }
         guard profile.screens.filter(\.isMain).count == 1,
               profile.screens.allSatisfy({ $0.isMain == ($0.origin == .zero) }) else {
-            throw DisplayFailure("В профиле указано некорректное расположение.")
+            throw DisplayFailure("В профиле указано недопустимое расположение дисплеев.")
         }
         let assignments = try profile.screens.map { saved -> (DisplayProfile.Screen, Display, ScreenMode?) in
             guard let display = screens.first(where: { $0.identity == saved.id }) else {
@@ -921,7 +921,7 @@ final class DisplayManager {
     }
 
     func setHDR(_ enabled: Bool, on display: Display) async throws {
-        guard !isWritingMonitor else { throw DisplayFailure("Дождись окончания записи настроек монитора.") }
+        guard !isWritingMonitor else { throw DisplayFailure("Дождись записи настроек монитора.") }
         try await changeDisplaySettings {
             try await DisplayHDRMode.set(enabled, on: display)
             rememberHDR(enabled, for: display.identity)
@@ -979,10 +979,10 @@ final class DisplayManager {
         guard let display = screens.first(where: { $0.identity == identity }), display.current.key != key,
               let mode = display.modes.first(where: { $0.key == key }) else { return }
         guard display.mirrors == kCGNullDirectDisplay else {
-            message = "Для выбора собственного режима этого дисплея выключи видеоповтор в настройках macOS."
+            message = "Выключи видеоповтор в настройках macOS, чтобы выбрать режим для этого дисплея."
             return
         }
-        beginPreview("\(display.title) · \(mode.key.label)", expectedModes: [identity: key]) { config in
+        beginPreview("\(display.title): \(mode.key.label)", expectedModes: [identity: key]) { config in
             try setMode(config, display: display.id, mode: mode)
         }
     }
@@ -999,7 +999,7 @@ final class DisplayManager {
             return
         }
         guard display.bounds.origin != point else { return }
-        beginPreview("\(display.title) · \(placement.rawValue.lowercased())",
+        beginPreview("\(display.title) \(placement.rawValue.lowercased()) от основного",
                      expectedOrigins: [display.identity: point]) { config in
             try setOrigin(config, display.id, point)
         }
@@ -1014,7 +1014,7 @@ final class DisplayManager {
             (screen, CGPoint(x: screen.bounds.minX - display.bounds.minX, y: screen.bounds.minY - display.bounds.minY))
         }
         let expected = Dictionary(positions.map { ($0.0.identity, $0.1) }, uniquingKeysWith: { first, _ in first })
-        beginPreview("\(display.title) · основной дисплей", expectedOrigins: expected, expectedMain: display.id) { config in
+        beginPreview("Основной дисплей: \(display.title)", expectedOrigins: expected, expectedMain: display.id) { config in
             for (screen, point) in positions { try setOrigin(config, screen.id, point) }
         }
     }
@@ -1099,7 +1099,7 @@ final class DisplayManager {
               let original = DisplayOrientation.current(display.id), original != orientation else { return }
         let rotation = RotationChange(id: display.id, identity: display.identity, previous: original,
                                       requested: orientation)
-        _ = beginPreview("Поворот · \(orientation.title)", rotation: rotation) { _ in }
+        _ = beginPreview("Поворот на \(orientation.title)", rotation: rotation) { _ in }
     }
 
     func tryMirror(_ targetID: CGDirectDisplayID, of sourceID: CGDirectDisplayID) {
@@ -1108,11 +1108,11 @@ final class DisplayManager {
         guard let target = screens.first(where: { $0.id == targetID }),
               let source = screens.first(where: { $0.id == sourceID }),
               screens.allSatisfy({ !$0.isInMirrorSet }) else {
-            message = "Для проверки отключи текущий видеоповтор."
+            message = "Выключи текущий видеоповтор перед проверкой нового."
             return
         }
         let change = MirrorChange(source: sourceID, target: targetID)
-        beginPreview("\(source.title) → \(target.title)", mirror: change) { config in
+        beginPreview("Повтор изображения с \(source.title) на \(target.title)", mirror: change) { config in
             try checkDisplayError(CGConfigureDisplayMirrorOfDisplay(config, targetID, sourceID))
         }
     }
@@ -1152,14 +1152,14 @@ final class DisplayManager {
         expectedMain: CGDirectDisplayID? = nil, profile: DisplayProfile? = nil, mirror: MirrorChange? = nil,
         rotation: RotationChange? = nil, _ operation: (CGDisplayConfigRef) throws -> Void
     ) -> String? {
-        guard canChangeDisplayConfiguration else { return "Дождись восстановления конфигурации." }
+        guard canChangeDisplayConfiguration else { return "Дождись восстановления настроек." }
         let snapshot = screens.filter { $0.mirrors == kCGNullDirectDisplay }.map(DisplayState.init)
         let couldLoseOrigin = screens.contains { display in
             expectedModes[display.identity].map({ $0 != display.current.key }) == true && display.current.key.isHiDPI
                 && HiddenDisplayModes.configure == nil
         }
         guard !couldLoseOrigin else {
-            message = "Этот HiDPI-режим нельзя гарантированно восстановить через текущую версию macOS."
+            message = "В этой версии macOS BestDisplay может не восстановить этот режим HiDPI."
             return message
         }
         verification.cancel()
@@ -1234,7 +1234,7 @@ final class DisplayManager {
         refresh()
         if preview.profile == nil { updateProtectedProfile() }
         if preview.mirror != nil || preview.rotation != nil { updateProtectedTopology() }
-        message = "Применено до выхода из сеанса macOS."
+        message = "Настройки применены до выхода из учётной записи macOS."
         recordProfilePreview(preview, result: "Применение профиля подтверждено.")
         scheduleRefresh()
     }
@@ -1351,7 +1351,7 @@ final class DisplayManager {
         let original = displays().filter { $0.mirrors == kCGNullDirectDisplay }.map(DisplayState.init)
         let maximum = hiDPI ? 2560 : 5120
         guard (640...maximum).contains(width), (360...maximum).contains(height), (24...120).contains(rate) else {
-            message = "Допустимые размеры от 640×360 до \(maximum)×\(maximum)."
+            message = "Укажи ширину от 640 до \(maximum) и высоту от 360 до \(maximum) пикселей."
             return
         }
         verification.cancel()
@@ -1419,7 +1419,7 @@ final class DisplayManager {
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             message = SMAppService.mainApp.status == .requiresApproval
-                ? "Подтверди запуск BestDisplay в «Объекты входа» в настройках macOS."
+                ? "Открой «Объекты входа» в настройках macOS и разреши запуск BestDisplay."
                 : nil
         } catch {
             message = error.localizedDescription

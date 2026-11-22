@@ -94,14 +94,14 @@ extension DisplayTopology {
         try configureDisplays { config in
             for identity in previous.keys where desired[identity] != previous[identity] {
                 guard let target = ids[identity], displayIdentity(target) == identity else {
-                    throw DisplayFailure("Изменился дисплей видеоповтора.")
+                    throw DisplayFailure("Изменился один из дисплеев видеоповтора.")
                 }
                 try checkDisplayError(CGConfigureDisplayMirrorOfDisplay(config, target, kCGNullDirectDisplay))
             }
             for (identity, value) in desired where previous[identity] != value {
                 guard let target = ids[identity], let source = ids[value],
                       displayIdentity(target) == identity, displayIdentity(source) == value else {
-                    throw DisplayFailure("Изменился дисплей видеоповтора.")
+                    throw DisplayFailure("Изменился один из дисплеев видеоповтора.")
                 }
                 try checkDisplayError(CGConfigureDisplayMirrorOfDisplay(config, target, source))
             }

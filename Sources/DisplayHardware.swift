@@ -84,7 +84,7 @@ struct Display: Identifiable {
         let hiDPI = relevant.filter(\.key.isHiDPI)
         let comparisonSize = builtIn ? current.key.desktop : panel ?? current.key.desktop
         if let currentScale = choose(hiDPI.filter({ $0.key.desktop == comparisonSize })) {
-            result.append(("Тот же размер в HiDPI", currentScale))
+            result.append(("Тот же масштаб в HiDPI", currentScale))
         }
         let reference = panel.map { builtIn ? $0.width / 2 : $0.width } ?? current.key.desktop.width
         let larger = relevant.filter { mode in
@@ -92,7 +92,7 @@ struct Display: Identifiable {
         }
         let largerHiDPI = larger.filter(\.key.isHiDPI)
         if let bigText = choose(largerHiDPI.isEmpty ? larger : largerHiDPI, nearestWidth: Int(Double(reference) * 0.83)) {
-            result.append(("Крупнее текст", bigText))
+            result.append(("Более крупный текст", bigText))
         }
         var seen = Set<ModeKey>()
         return result.filter { seen.insert($0.1.key).inserted }
@@ -216,7 +216,7 @@ func configureDisplays(
     var configuration: CGDisplayConfigRef?
     let begin = CGBeginDisplayConfiguration(&configuration)
     guard begin == .success, let configuration else {
-        throw DisplayFailure("Не удалось открыть конфигурацию дисплеев (\(begin.rawValue)).")
+        throw DisplayFailure("Не удалось начать изменение настроек дисплеев. Код ошибки \(begin.rawValue).")
     }
     do {
         try operation(configuration)
@@ -228,7 +228,7 @@ func configureDisplays(
 }
 
 func checkDisplayError(_ result: CGError) throws {
-    guard result == .success else { throw DisplayFailure("macOS отклонила изменение (\(result.rawValue)).") }
+    guard result == .success else { throw DisplayFailure("macOS отклонила изменение. Код ошибки \(result.rawValue).") }
 }
 
 // Quartz filters part of the display mode table on Apple Silicon. Use its

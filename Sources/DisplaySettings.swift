@@ -86,12 +86,12 @@ struct DisplayHistoryEntry: Codable, Identifiable {
         var title: String {
             switch self {
             case .launch: "Запуск BestDisplay"
-            case .wake: "Пробуждение экранов"
-            case .attached: "Подключение дисплея"
-            case .detached: "Отключение дисплея"
-            case .profile: "Ручное применение профиля"
-            case .protection: "Защита конфигурации"
-            case .verification: "Повторная проверка настроек"
+            case .wake: "Пробуждение"
+            case .attached: "Подключение"
+            case .detached: "Отключение"
+            case .profile: "Применение профиля"
+            case .protection: "Восстановление настроек"
+            case .verification: "Повторная проверка"
             }
         }
     }
