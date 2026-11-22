@@ -92,7 +92,9 @@ final class DisplayManager {
     var message: String?
     private(set) var preview: DisplayPreview?
     private(set) var secondsLeft = 0
-    private(set) var remembered: [String: ModeKey] = [:]
+    private var rememberedSettings = RememberedDisplaySettings()
+    var remembered: [String: ModeKey] { rememberedSettings.modes }
+    private var rememberedHDR: [String: Bool] { rememberedSettings.hdr }
     private(set) var profiles: [DisplayProfile] = []
     private(set) var history: [DisplayHistoryEntry] = []
     var monitorValues: [MonitorControl: ControlValue] = [:]
@@ -109,6 +111,7 @@ final class DisplayManager {
     private var knownPhysicalIDs = Set<CGDirectDisplayID>()
     private var pendingRestore: PendingDisplayRestore?
     private var verification = DisplayVerificationWindow()
+    private var failedHDRRestores = Set<String>()
     private var lastDisplayNames: [String: String] = [:]
     private var nextProtectionCheck: TimeInterval = 0
     private var nextTopologyAttempt: TimeInterval = 0
@@ -130,6 +133,7 @@ final class DisplayManager {
     let edrPreview = EDRPreview()
     let storage: UserDefaults
     private let rememberedKey = "preferredDisplayModes"
+    private let rememberedHDRKey = "preferredDisplayHDR"
     private static let panelOverridesKey = "displayPanelSizeOverrides"
     private var panelOverrides: [String: Dimensions]
     private let profilesKey = "displayProfiles"
@@ -184,7 +188,11 @@ final class DisplayManager {
         }
         if let encoded = storage.data(forKey: rememberedKey),
            let stored = try? JSONDecoder().decode([String: ModeKey].self, from: encoded) {
-            remembered = stored
+            rememberedSettings.modes = stored
+        }
+        if let encoded = storage.data(forKey: rememberedHDRKey),
+           let stored = try? JSONDecoder().decode([String: Bool].self, from: encoded) {
+            rememberedSettings.hdr = stored
         }
         if let encoded = storage.data(forKey: profilesKey),
            let stored = try? JSONDecoder().decode([DisplayProfile].self, from: encoded) {
@@ -212,7 +220,8 @@ final class DisplayManager {
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
             do { try await Task.sleep(for: delay) } catch { return }
-            self?.refreshAfterChange()
+            self?.refreshTask = nil
+            await self?.refreshAfterChange()
         }
     }
 
@@ -289,13 +298,17 @@ final class DisplayManager {
                 identity: display?.identity ?? displayIdentity(id, among: onlineIDs) ?? "session-\(id)",
                 legacyUUID: legacyDisplayIdentity(id), name: display?.title, modes: modes)
         }
-        let stored = DisplayIdentityMigration(remembered: remembered, profiles: profiles,
+        let stored = DisplayIdentityMigration(remembered: remembered, rememberedHDR: rememberedHDR, profiles: profiles,
                                               topologies: protectedTopologies, brightnessGroup: brightnessGroup,
                                               migratedHardwareIDs: migratedHardwareIDs)
         let migrated = stored.migrated(online: online, history: history)
         if migrated.remembered != remembered {
-            remembered = migrated.remembered
+            rememberedSettings.modes = migrated.remembered
             persist(remembered, for: rememberedKey)
+        }
+        if migrated.rememberedHDR != rememberedHDR {
+            rememberedSettings.hdr = migrated.rememberedHDR
+            persist(rememberedHDR, for: rememberedHDRKey)
         }
         if migrated.profiles != profiles {
             profiles = migrated.profiles
@@ -323,14 +336,14 @@ final class DisplayManager {
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             self?.recheckDeadline = nil
             self?.recheckTask = nil
-            self?.refreshAfterChange()
+            await self?.refreshAfterChange()
         }
     }
 
-    private func refreshAfterChange() {
+    private func refreshAfterChange() async {
         guard !isConfiguringDisplays else { return }
         refresh()
-        processDisplayChanges()
+        await processDisplayChanges()
     }
 
     private func collectDisplayEvents(among displays: [Display], now: TimeInterval)
@@ -362,13 +375,15 @@ final class DisplayManager {
 
         if !triggers.isEmpty {
             var pending = pendingRestore ?? PendingDisplayRestore()
-            pending.targets.formUnion(!launched || wakeStarted != nil
-                ? identities : Set(physical.lazy.filter { added.contains($0.id) }.map(\.identity)))
+            var targets = !launched || wakeStarted != nil
+                ? identities : Set(physical.lazy.filter { added.contains($0.id) }.map(\.identity))
             if wakeStarted != nil {
-                pending.targets.formUnion(knownDisplays.filter {
+                targets.formUnion(knownDisplays.filter {
                     missing.contains($0.value.displayID) && !disconnected.contains($0.value.displayID)
                 }.keys)
             }
+            failedHDRRestores.subtract(targets)
+            pending.targets.formUnion(targets)
             pending.triggers.formUnion(triggers)
             pending.before.merge(before) { original, _ in original }
             if pending.waitUntil == 0, !pending.targets.isSubset(of: Set(observed.keys).intersection(identities)) {
@@ -388,7 +403,7 @@ final class DisplayManager {
         return (before, identities)
     }
 
-    private func processDisplayChanges() {
+    private func processDisplayChanges() async {
         guard !isConfiguringDisplays else { return }
         recheckTask?.cancel()
         recheckTask = nil
@@ -405,17 +420,8 @@ final class DisplayManager {
             scheduleRecheck(at: nextTopologyAttempt)
         }
 
-        let restored = restorePendingDisplays(online: online, now: now)
-        verifyDisplayModes(now: now, excluding: restored)
-        if let profile = currentProfile, profile.protectsConfiguration == true,
-           failedProfileProtection != profile.id,
-           !profile.isApplied(to: screens) {
-            if now >= nextProtectionCheck {
-                restoreProfile(profile, triggers: [.protection], before: observations())
-            } else {
-                scheduleRecheck(at: nextProtectionCheck)
-            }
-        }
+        let restored = await restorePendingDisplays(online: online, now: now)
+        await verifyDisplayModes(now: ProcessInfo.processInfo.systemUptime, excluding: restored)
     }
 
     private func restoreProtectedTopology(_ topology: DisplayTopology, before: [String: DisplayObservation]) {
@@ -438,11 +444,11 @@ final class DisplayManager {
             addHistory([.protection], before: before, result: result)
             nextTopologyAttempt = ProcessInfo.processInfo.systemUptime + 5
             isChangingTopology = false
-            processDisplayChanges()
+            await processDisplayChanges()
         }
     }
 
-    private func restorePendingDisplays(online: Set<String>, now: TimeInterval) -> Set<String> {
+    private func restorePendingDisplays(online: Set<String>, now: TimeInterval) async -> Set<String> {
         guard var pending = pendingRestore else { return [] }
         let available = Set(screens.filter { knownPhysicalIDs.contains($0.id) }.map(\.identity))
         let candidates: Set<String>
@@ -459,10 +465,10 @@ final class DisplayManager {
         let restored: Set<String>
         if pending.targets.isEmpty, pending.allowsProfile, let profile = currentProfile, profile.automaticallyApplies,
            failedProfileProtection != profile.id {
-            restoreProfile(profile, triggers: triggers, before: pending.before)
+            await restoreProfile(profile, triggers: triggers, before: pending.before, hdrCandidates: candidates)
             restored = profile.displayIDs
         } else {
-            restoreRememberedModes(candidates, triggers: triggers, before: pending.before)
+            await restoreRememberedModes(candidates, triggers: triggers, before: pending.before)
             restored = candidates
         }
         if !pending.targets.isEmpty {
@@ -476,27 +482,41 @@ final class DisplayManager {
         return restored
     }
 
-    private func verifyDisplayModes(now: TimeInterval, excluding restored: Set<String>) {
+    private func verifyDisplayModes(now: TimeInterval, excluding restored: Set<String>) async {
         let candidates = verification.identities.subtracting(restored)
         let profileCandidates = verification.profileIdentities.subtracting(restored)
         verification.expire(at: now)
         if let deadline = verification.deadline { scheduleRecheck(at: deadline) }
-        guard !candidates.isEmpty else { return }
         if let profile = currentProfile {
-            if profile.automaticallyApplies, profile.displayIDs.isSubset(of: profileCandidates),
+            if !candidates.isEmpty, profile.automaticallyApplies, profile.displayIDs.isSubset(of: profileCandidates),
                failedProfileProtection != profile.id,
                profile.protectsConfiguration != true || now >= nextProtectionCheck {
-                restoreProfile(profile, triggers: [.verification], before: observations())
+                await restoreProfile(profile, triggers: [.verification], before: observations(), hdrCandidates: candidates)
                 return
             }
-            if profile.protectsConfiguration == true { return }
+            if profile.protectsConfiguration == true {
+                let before = observations()
+                if failedProfileProtection != profile.id, !profile.isApplied(to: screens) {
+                    if now >= nextProtectionCheck {
+                        await restoreProfile(profile, triggers: [.protection], before: before, hdrCandidates: candidates)
+                        return
+                    }
+                    scheduleRecheck(at: nextProtectionCheck)
+                }
+                let hdrResults = await restoreHDR(candidates)
+                if !hdrResults.isEmpty {
+                    addHistory([.verification], before: before, result: hdrResults.joined(separator: " "))
+                }
+                return
+            }
         }
-        restoreRememberedModes(candidates, triggers: [.verification], before: observations())
+        guard !candidates.isEmpty else { return }
+        await restoreRememberedModes(candidates, triggers: [.verification], before: observations())
     }
 
     private func restoreRememberedModes(
         _ candidates: Set<String>, triggers: [DisplayHistoryEntry.Trigger], before: [String: DisplayObservation]
-    ) {
+    ) async {
         let requested = remembered.filter { candidates.contains($0.key) }
         var unavailable: [String] = []
         let changes: [(Display, ScreenMode)] = screens.compactMap { display in
@@ -534,12 +554,42 @@ final class DisplayManager {
             message = warning
             result = changes.isEmpty ? warning : "\(result) \(warning)"
         }
-        if corrected || triggers != [.verification] {
-            addHistory(triggers, before: before, requested: requested, result: result)
-        }
         for display in screens where requested[display.identity] == display.current.key {
             persistActiveMode(of: display)
         }
+        let hdrResults = await restoreHDR(candidates)
+        if corrected || !hdrResults.isEmpty || triggers != [.verification] {
+            let results = requested.isEmpty && !hdrResults.isEmpty ? hdrResults : [result] + hdrResults
+            addHistory(triggers, before: before, requested: requested,
+                       result: results.joined(separator: " "))
+        }
+    }
+
+    private func restoreHDR(_ candidates: Set<String>) async -> [String] {
+        guard canChangeDisplayConfiguration else { return [] }
+        var results: [String] = []
+        defer {
+            if !results.isEmpty {
+                isChangingDisplaySettings = false
+                scheduleRefresh()
+            }
+        }
+        for display in screens where candidates.contains(display.identity)
+            && rememberedHDR[display.identity] != nil && !failedHDRRestores.contains(display.identity) {
+            guard let desired = rememberedSettings.hdrChange(for: display.identity,
+                                                            current: DisplayHDRMode.status(for: display)) else { continue }
+            isChangingDisplaySettings = true
+            let result: String
+            do {
+                try await DisplayHDRMode.set(desired, on: display)
+                result = desired ? "HDR включён." : "HDR выключен."
+            } catch {
+                failedHDRRestores.insert(display.identity)
+                result = error.localizedDescription
+            }
+            results.append("«\(display.title)»: \(result)")
+        }
+        return results
     }
 
     private func persistActiveMode(of display: Display) {
@@ -762,8 +812,9 @@ final class DisplayManager {
     }
 
     private func restoreProfile(
-        _ profile: DisplayProfile, triggers: [DisplayHistoryEntry.Trigger], before: [String: DisplayObservation]
-    ) {
+        _ profile: DisplayProfile, triggers: [DisplayHistoryEntry.Trigger], before: [String: DisplayObservation],
+        hdrCandidates: Set<String>
+    ) async {
         var corrected = false
         var result = "Профиль уже активен."
         if !profile.isApplied(to: screens) {
@@ -785,8 +836,10 @@ final class DisplayManager {
                 message = "Профиль «\(profile.name)»: \(result)"
             }
         }
-        if corrected || triggers != [.verification] {
-            addHistory(triggers, profileName: profile.name, before: before, requested: profile.modes, result: result)
+        let hdrResults = await restoreHDR(hdrCandidates)
+        if corrected || !hdrResults.isEmpty || triggers != [.verification] {
+            addHistory(triggers, profileName: profile.name, before: before, requested: profile.modes,
+                       result: ([result] + hdrResults).joined(separator: " "))
         }
     }
 
@@ -855,6 +908,20 @@ final class DisplayManager {
             scheduleRefresh()
         }
         try await operation()
+    }
+
+    func setHDR(_ enabled: Bool, on display: Display) async throws {
+        try await changeDisplaySettings {
+            try await DisplayHDRMode.set(enabled, on: display)
+            rememberHDR(enabled, for: display.identity)
+            message = enabled ? "Режим HDR включён." : "Режим HDR выключен."
+        }
+    }
+
+    private func rememberHDR(_ enabled: Bool, for identity: String) {
+        guard !identity.hasPrefix("session-") else { return }
+        rememberedSettings.hdr[identity] = enabled
+        persist(rememberedHDR, for: rememberedHDRKey)
     }
 
     func select(_ id: CGDirectDisplayID) {
@@ -1222,8 +1289,10 @@ final class DisplayManager {
         if enabled { refresh() }
         guard let display = screens.first(where: { $0.identity == identity }) else { return }
         verification.cancel()
-        remembered[identity] = enabled ? display.current.key : nil
+        let hdr = enabled ? DisplayHDRMode.status(for: display) : nil
+        rememberedSettings.setMode(enabled ? display.current.key : nil, currentHDR: hdr, for: identity)
         persist(remembered, for: rememberedKey)
+        if hdr != nil { persist(rememberedHDR, for: rememberedHDRKey) }
         message = nil
         if enabled { persistActiveMode(of: display) }
     }

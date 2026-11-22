@@ -24,7 +24,7 @@ struct DisplayHDRView: View {
             }
             if let enabled {
                 Toggle("Использовать HDR", isOn: Binding(get: { enabled }, set: { setHDR($0) }))
-                    .disabled(busy)
+                    .disabled(busy || !manager.canChangeDisplayConfiguration)
             }
             if let presets, let active = presets.options.first(where: { $0.id == presets.active }) {
                 LabeledContent("Профиль XDR") {
@@ -33,12 +33,13 @@ struct DisplayHDRView: View {
                             Button(preset.title) { setPreset(preset.id) }.disabled(preset.id == presets.active)
                         }
                     }
-                    .disabled(busy)
+                    .disabled(busy || !manager.canChangeDisplayConfiguration)
                 }
             }
         }
         .onAppear(perform: refresh)
         .onChange(of: display.current.key, refresh)
+        .onChange(of: manager.canChangeDisplayConfiguration, refresh)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)) { _ in
             if !busy { refresh() }
         }
@@ -51,15 +52,16 @@ struct DisplayHDRView: View {
 
     private func setPreset(_ index: UInt32) {
         apply {
-            try await DisplayReferencePresets.set(index, on: display)
-            manager.message = "Профиль XDR применён."
+            try await manager.changeDisplaySettings {
+                try await DisplayReferencePresets.set(index, on: display)
+                manager.message = "Профиль XDR применён."
+            }
         }
     }
 
     private func setHDR(_ value: Bool) {
         apply {
-            try await DisplayHDRMode.set(value, on: display)
-            manager.message = value ? "Режим HDR включён." : "Режим HDR выключен."
+            try await manager.setHDR(value, on: display)
         }
     }
 
@@ -71,7 +73,7 @@ struct DisplayHDRView: View {
                 busy = false
             }
             do {
-                try await manager.changeDisplaySettings(operation)
+                try await operation()
             } catch {
                 manager.message = error.localizedDescription
             }

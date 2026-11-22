@@ -9,6 +9,7 @@ struct DisplayIdentityMigration: Equatable {
     }
 
     var remembered: [String: ModeKey]
+    var rememberedHDR: [String: Bool] = [:]
     var profiles: [DisplayProfile]
     var topologies: [DisplayTopology]
     var brightnessGroup: Set<String>
@@ -71,7 +72,7 @@ struct DisplayIdentityMigration: Equatable {
             return String(identity.dropLast(parts[3].count))
         }
 
-        var storedIDs = Set(remembered.keys).union(brightnessGroup)
+        var storedIDs = Set(remembered.keys).union(rememberedHDR.keys).union(brightnessGroup)
         for profile in profiles { storedIDs.formUnion(profile.displayIDs) }
         for topology in topologies {
             storedIDs.formUnion(topology.identities)
@@ -112,6 +113,7 @@ struct DisplayIdentityMigration: Equatable {
 
         var updated = self
         updated.remembered = rekey(remembered)
+        updated.rememberedHDR = rekey(rememberedHDR)
         updated.profiles = profiles.map { profile in
             var migrated = profile
             migrated.screens = profile.screens.map { screen in

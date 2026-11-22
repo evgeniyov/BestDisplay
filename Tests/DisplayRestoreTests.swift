@@ -1,6 +1,22 @@
 import Foundation
 
 func displayRestoreTests() {
+    let size = Dimensions(width: 2560, height: 1440)
+    let savedMode = ModeKey(desktop: size, rendering: size, millihertz: 60000)
+    var settings = RememberedDisplaySettings()
+    settings.setMode(savedMode, currentHDR: false, for: "A")
+    check(settings.modes["A"] == savedMode && settings.hdr["A"] == false, "Remembering a mode captures HDR off")
+    settings.setMode(savedMode, currentHDR: nil, for: "A")
+    check(settings.hdr["A"] == false, "Saving a mode with unknown HDR status preserves the preference")
+    settings.setMode(nil, currentHDR: true, for: "A")
+    check(settings.modes["A"] == nil && settings.hdr["A"] == false, "Forgetting the mode leaves HDR alone")
+    check(settings.hdrChange(for: "A", current: true) == false, "Verification requests HDR off when it is on")
+    settings.hdr["A"] = true
+    check(settings.hdrChange(for: "A", current: false) == true, "Verification requests HDR on when it is off")
+    check(settings.hdrChange(for: "A", current: true) == nil, "Matching HDR needs no change")
+    check(settings.hdrChange(for: "A", current: nil) == nil, "Unsupported HDR needs no change")
+    check(settings.hdrChange(for: "B", current: true) == nil, "An unsaved display needs no HDR change")
+
     let fingerprint = DisplayHardwareFingerprint(vendor: 12, model: 34, serial: 56)
     let otherModel = DisplayHardwareFingerprint(vendor: 12, model: 35, serial: 56)
     let noSerial = DisplayHardwareFingerprint(vendor: 12, model: 34, serial: 0)

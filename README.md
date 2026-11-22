@@ -46,7 +46,7 @@ On the **Управление** (Controls) tab, you can choose an RGB ICC file f
 
 ### HDR, XDR, HDMI-CEC and software volume
 
-- **HDR / XDR** on the **Управление** tab shows the EDR headroom. The test draws SDR reference white next to two brighter patches through Metal. The HDR switch and the XDR reference profiles appear when macOS reports those features. The profiles use the display's built-in brightness limits.
+- **HDR / XDR** on the **Управление** tab shows the EDR headroom. The test draws SDR reference white next to two brighter patches through Metal. The HDR switch and the XDR reference profiles appear when macOS reports those features. The profiles use the display's built-in brightness limits. **Использовать HDR** (Use HDR) and **Запомнить режим** (Remember mode) save the display's HDR setting for the next launch, connection or wake.
 - **HDMI-CEC** turns a TV on and off and selects its HDMI input from the Mac through a compatible USB-CEC adapter and `cec-client` from [libCEC](https://github.com/Pulse-Eight/libcec). With Homebrew installed, `brew install libcec` adds the tool. Click **Найти адаптеры** (Find adapters), choose an adapter and request the TV's state. If the input is detected wrong, choose its number in **HDMI-вход ТВ** (TV HDMI input). Power and input commands ask for confirmation.
 - **Программная громкость** (Software volume) works on macOS 14.2 and later with an audio output that has one stereo stream and no input channels. After you turn it on, allow system audio capture if macOS asks, and play some sound. The slider attenuates the signal from 100% to 0% through Core Audio. Audio stays in memory. Switching the output, sleep and quitting BestDisplay turn the processing off.
 

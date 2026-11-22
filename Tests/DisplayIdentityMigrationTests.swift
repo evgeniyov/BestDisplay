@@ -22,10 +22,12 @@ func displayIdentityMigrationTests() {
                                  protectsConfiguration: true, screens: [saved])
     let topology = DisplayTopology(identities: [legacy, other], orientations: [legacy: .right, other: .left],
                                    mirrors: [legacy: other])
-    let stored = DisplayIdentityMigration(remembered: [legacy: hidpi, other: native], profiles: [profile],
+    let stored = DisplayIdentityMigration(remembered: [legacy: hidpi, other: native],
+                                          rememberedHDR: [legacy: false, other: true], profiles: [profile],
                                           topologies: [topology], brightnessGroup: [legacy, other])
     let migrated = stored.migrated(online: [philips], history: [])
     check(migrated.remembered == [hardware: hidpi, other: native], "moves remembered UUID")
+    check(migrated.rememberedHDR == [hardware: false, other: true], "moves HDR off from UUID to hardware identity")
     var expectedProfile = profile
     expectedProfile.screens = [DisplayProfile.Screen(id: hardware, name: saved.name, mode: saved.mode,
                                                      origin: saved.origin, isMain: saved.isMain, color: saved.color)]
@@ -40,6 +42,9 @@ func displayIdentityMigrationTests() {
     existing.remembered[hardware] = native
     check(existing.migrated(online: [philips], history: []).remembered == [hardware: native, other: native],
           "existing hardware preference wins an exact UUID conflict")
+    existing.rememberedHDR[hardware] = true
+    check(existing.migrated(online: [philips], history: []).rememberedHDR == [hardware: true, other: true],
+          "existing hardware HDR preference wins an exact UUID conflict")
 
     var duplicateTopologies = stored
     let unrelated = DisplayTopology(identities: [other], orientations: [other: .left], mirrors: [:])
@@ -196,6 +201,7 @@ func displayIdentityMigrationTests() {
     rekeyedProfile.screens = [DisplayProfile.Screen(id: changedSerial, name: saved.name, mode: saved.mode,
                                                     origin: saved.origin, isMain: saved.isMain, color: saved.color)]
     check(afterSerialChange.remembered == [changedSerial: hidpi, other: native]
+            && afterSerialChange.rememberedHDR == [changedSerial: false, other: true]
             && afterSerialChange.profiles == [rekeyedProfile]
             && afterSerialChange.topologies == [
                 DisplayTopology(identities: [other, changedSerial],
@@ -248,6 +254,10 @@ func displayIdentityMigrationTests() {
     forgottenBeforeWake.profiles = []
     forgottenBeforeWake.topologies = []
     forgottenBeforeWake.brightnessGroup = []
+    let hdrOnly = forgottenBeforeWake.migrated(online: [afterWake], history: [])
+    check(hdrOnly.rememberedHDR == [changedSerial: false, other: true] && hdrOnly.remembered == [other: native],
+          "a saved HDR preference alone follows the new serial without restoring a forgotten mode")
+    forgottenBeforeWake.rememberedHDR = [:]
     check(forgottenBeforeWake.migrated(online: [afterWake], history: [event(hardware, at: 1)]) == forgottenBeforeWake,
           "a history row alone cannot resurrect a forgotten serial")
 }

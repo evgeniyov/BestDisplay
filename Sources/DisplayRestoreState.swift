@@ -1,5 +1,20 @@
 import Foundation
 
+struct RememberedDisplaySettings {
+    var modes: [String: ModeKey] = [:]
+    var hdr: [String: Bool] = [:]
+
+    mutating func setMode(_ mode: ModeKey?, currentHDR: Bool?, for identity: String) {
+        modes[identity] = mode
+        if mode != nil, let currentHDR { hdr[identity] = currentHDR }
+    }
+
+    func hdrChange(for identity: String, current: Bool?) -> Bool? {
+        guard let current, let saved = hdr[identity], saved != current else { return nil }
+        return saved
+    }
+}
+
 struct DisplayObservation {
     let displayID: UInt32
     let name: String
