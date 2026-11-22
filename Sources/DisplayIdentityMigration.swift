@@ -15,6 +15,10 @@ struct DisplayIdentityMigration: Equatable {
     var migratedHardwareIDs: Set<String> = []
 
     func migrated(online: [OnlineDisplay], history: [DisplayHistoryEntry]) -> Self {
+        rekeyingChangedSerials(online: online, history: history).migratingUUIDs(online: online, history: history)
+    }
+
+    private func migratingUUIDs(online: [OnlineDisplay], history: [DisplayHistoryEntry]) -> Self {
         let byIdentity = Dictionary(grouping: online, by: \.identity)
         let eligible = online.filter {
             $0.identity.hasPrefix("hw-") && !migratedHardwareIDs.contains($0.identity)
@@ -37,7 +41,7 @@ struct DisplayIdentityMigration: Equatable {
         }, by: \.name).mapValues { $0.map(\.id) }
 
         var updated = self
-        var ownedUUIDs: [(uuid: String, identity: String)] = []
+        var ownedUUIDs: [(old: String, new: String)] = []
         for display in eligible {
             let identity = display.identity
             let currentUUID = display.legacyUUID.flatMap { byUUID[$0]?.count == 1 ? $0 : nil }
@@ -56,12 +60,49 @@ struct DisplayIdentityMigration: Equatable {
             updated.migratedHardwareIDs.insert(identity)
         }
 
-        guard !ownedUUIDs.isEmpty else { return updated }
-        let replacements = Dictionary(uniqueKeysWithValues: ownedUUIDs.map { ($0.uuid, $0.identity) })
+        return updated.rekeying(ownedUUIDs)
+    }
+
+    private func rekeyingChangedSerials(online: [OnlineDisplay], history: [DisplayHistoryEntry]) -> Self {
+        func productPrefix(_ identity: String) -> String? {
+            let parts = identity.split(separator: "-", omittingEmptySubsequences: false)
+            guard parts.count == 4, parts[0] == "hw",
+                  parts.dropFirst().allSatisfy({ UInt32($0) != nil }) else { return nil }
+            return String(identity.dropLast(parts[3].count))
+        }
+
+        var storedIDs = Set(remembered.keys).union(brightnessGroup)
+        for profile in profiles { storedIDs.formUnion(profile.displayIDs) }
+        for topology in topologies {
+            storedIDs.formUnion(topology.identities)
+            storedIDs.formUnion(topology.orientations.keys)
+            storedIDs.formUnion(topology.mirrors.keys)
+            storedIDs.formUnion(topology.mirrors.values)
+        }
+
+        let onlineProducts = Dictionary(grouping: online.compactMap { display in
+            productPrefix(display.identity).map { (prefix: $0, identity: display.identity) }
+        }, by: \.prefix)
+        let changes = onlineProducts.compactMap { prefix, displays -> (old: String, new: String)? in
+            guard displays.count == 1, let current = displays.first?.identity,
+                  !storedIDs.contains(current) else { return nil }
+            let candidates = storedIDs.filter { productPrefix($0) == prefix }
+            if candidates.count == 1, let old = candidates.first { return (old, current) }
+            guard !candidates.isEmpty else { return nil }
+            let old = history.sorted { $0.date > $1.date }.lazy.flatMap(\.screens)
+                .first { candidates.contains($0.id) }?.id
+            return old.map { ($0, current) }
+        }
+        return rekeying(changes)
+    }
+
+    private func rekeying(_ changes: [(old: String, new: String)]) -> Self {
+        guard !changes.isEmpty else { return self }
+        let replacements = Dictionary(uniqueKeysWithValues: changes)
         func identity(_ old: String) -> String { replacements[old] ?? old }
         func rekey<Value>(_ values: [String: Value]) -> [String: Value] {
             var updated = values
-            for (old, new) in ownedUUIDs {
+            for (old, new) in changes {
                 if let value = updated.removeValue(forKey: old), updated[new] == nil {
                     updated[new] = value
                 }
@@ -69,6 +110,8 @@ struct DisplayIdentityMigration: Equatable {
             return updated
         }
 
+        var updated = self
+        updated.remembered = rekey(remembered)
         updated.profiles = profiles.map { profile in
             var migrated = profile
             migrated.screens = profile.screens.map { screen in

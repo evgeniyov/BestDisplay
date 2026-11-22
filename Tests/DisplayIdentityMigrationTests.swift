@@ -181,4 +181,73 @@ func displayIdentityMigrationTests() {
           "a remembered mode missing from the first catalog waits for a later one")
     check(historyOnly.migrated(online: [philips], history: [event(older, at: 1)]).remembered == [hardware: hidpi],
           "the waiting mode is adopted once the display offers it")
+
+    let changedSerial = "hw-16652-49780-3467276838"
+    let spareSerial = "hw-16652-49780-123"
+    let afterWake = DisplayIdentityMigration.OnlineDisplay(identity: changedSerial, legacyUUID: newer,
+                                                           name: name, modes: [])
+    var beforeWake = migrated
+    beforeWake.migratedHardwareIDs.insert(changedSerial)
+    beforeWake.topologies.insert(
+        DisplayTopology(identities: [other, hardware], orientations: [hardware: .left], mirrors: [other: hardware]),
+        at: 0)
+    let afterSerialChange = beforeWake.migrated(online: [afterWake], history: [])
+    var rekeyedProfile = expectedProfile
+    rekeyedProfile.screens = [DisplayProfile.Screen(id: changedSerial, name: saved.name, mode: saved.mode,
+                                                    origin: saved.origin, isMain: saved.isMain, color: saved.color)]
+    check(afterSerialChange.remembered == [changedSerial: hidpi, other: native]
+            && afterSerialChange.profiles == [rekeyedProfile]
+            && afterSerialChange.topologies == [
+                DisplayTopology(identities: [other, changedSerial],
+                                orientations: [changedSerial: .right, other: .left], mirrors: [changedSerial: other])
+            ] && afterSerialChange.brightnessGroup == [changedSerial, other]
+            && afterSerialChange.migratedHardwareIDs == beforeWake.migratedHardwareIDs,
+          "a changed serial moves all settings and deduplicates topologies even after UUID migration")
+    check(afterSerialChange.migrated(online: [afterWake], history: [event(hardware, at: 1)]) == afterSerialChange,
+          "serial migration is idempotent")
+    var mixedIdentities = beforeWake
+    mixedIdentities.migratedHardwareIDs.remove(changedSerial)
+    mixedIdentities.remembered[unsupported] = unavailable
+    let readyAfterWake = DisplayIdentityMigration.OnlineDisplay(identity: changedSerial, legacyUUID: newer,
+                                                                name: name, modes: [hidpi])
+    let mixedHistory = [event(unsupported, at: 1)]
+    check(mixedIdentities.migrated(online: [readyAfterWake], history: mixedHistory) == afterSerialChange,
+          "serial and UUID migration finish in one pass when a remembered serial and legacy UUID coexist")
+
+    let secondPhilips = DisplayIdentityMigration.OnlineDisplay(identity: spareSerial, legacyUUID: nil,
+                                                               name: name, modes: [])
+    check(beforeWake.migrated(online: [afterWake, secondPhilips], history: [event(hardware, at: 1)]) == beforeWake,
+          "two online displays of the same product prevent serial migration")
+    var savedUnderNewSerial = beforeWake
+    savedUnderNewSerial.remembered[changedSerial] = native
+    check(savedUnderNewSerial.migrated(online: [afterWake], history: [event(hardware, at: 1)]) == savedUnderNewSerial,
+          "existing remembered settings for the new serial prevent all serial migration")
+    savedUnderNewSerial.remembered[changedSerial] = nil
+    savedUnderNewSerial.profiles.append(rekeyedProfile)
+    check(savedUnderNewSerial.migrated(online: [afterWake], history: []) == savedUnderNewSerial,
+          "a reference in a profile alone protects the new serial")
+
+    var multipleSerials = migrated
+    multipleSerials.migratedHardwareIDs = beforeWake.migratedHardwareIDs
+    multipleSerials.remembered[spareSerial] = native
+    let serialHistory = [event(hardware, at: 2), event(spareSerial, at: 4), event(changedSerial, at: 5)]
+    var expectedSerials = multipleSerials
+    expectedSerials.remembered.removeValue(forKey: spareSerial)
+    expectedSerials.remembered[changedSerial] = native
+    check(multipleSerials.migrated(online: [afterWake], history: serialHistory) == expectedSerials,
+          "the newest stored serial in history wins and settings for the other serial remain")
+    check(multipleSerials.migrated(online: [afterWake], history: [event(changedSerial, at: 5)]) == multipleSerials,
+          "multiple stored serials without a history match prevent serial migration")
+
+    var forgottenBeforeWake = beforeWake
+    forgottenBeforeWake.remembered.removeValue(forKey: hardware)
+    var expectedAfterForget = afterSerialChange
+    expectedAfterForget.remembered.removeValue(forKey: changedSerial)
+    check(forgottenBeforeWake.migrated(online: [afterWake], history: [event(hardware, at: 1)]) == expectedAfterForget,
+          "a serial change preserves the other settings without resurrecting a forgotten mode")
+    forgottenBeforeWake.profiles = []
+    forgottenBeforeWake.topologies = []
+    forgottenBeforeWake.brightnessGroup = []
+    check(forgottenBeforeWake.migrated(online: [afterWake], history: [event(hardware, at: 1)]) == forgottenBeforeWake,
+          "a history row alone cannot resurrect a forgotten serial")
 }

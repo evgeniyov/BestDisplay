@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Saved display settings follow a monitor when its reported serial number changes and it is the only connected monitor of that model.
 - External monitors that don't report their panel size get a size inferred from the refresh rates of their 1× modes. You can also pick the size by hand on the Scale tab.
 - A remembered mode is also saved in macOS. macOS applies it when the display connects, even when BestDisplay isn't running, until macOS gives the display a new system identifier.
 - Remembered modes, profiles, layout protection and the brightness group now survive reconnecting monitors that report a serial number. Old entries move over automatically. A remembered mode whose UUID changed can be recovered from the connection history.

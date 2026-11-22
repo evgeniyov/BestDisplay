@@ -274,8 +274,6 @@ final class DisplayManager {
             display.identity.hasPrefix("hw-") && !migratedHardwareIDs.contains(display.identity)
                 && DisplayHistoryEntry.Screen.knownName(display.title) != nil
         }
-        guard screens.contains(where: canMigrate) else { return }
-
         let byID = Dictionary(uniqueKeysWithValues: screens.map { ($0.id, $0) })
         let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
         let online = onlineIDs.map { id in
