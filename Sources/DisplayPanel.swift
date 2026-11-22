@@ -427,6 +427,7 @@ struct DisplayPanel: View {
 
     @ViewBuilder
     private func controls(for display: Display) -> some View {
+        let hdrEnabled = manager.hdrModes[display.id] == true
         VStack(alignment: .leading, spacing: 9) {
             HStack {
                 Text("Настройки монитора").font(.headline)
@@ -442,12 +443,18 @@ struct DisplayPanel: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            if hdrEnabled {
+                Text("В режиме HDR монитор не принимает контраст и цвет. Выключи HDR, чтобы изменить их.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             ForEach(MonitorControl.allCases, id: \.self) { control in
                 if let current = manager.monitorValues[control] {
                     HardwareSlider(control: control, current: current, isWriting: manager.isWritingMonitor) { value in
                         manager.setMonitor(control, value: value)
                     }
                     .id("\(display.identity)-\(control.rawValue)")
+                    .disabled(manager.isTuningHDR || (control.locksInHDR && (hdrEnabled || !manager.canChangeDisplayConfiguration)))
                 }
             }
         }
@@ -491,6 +498,11 @@ struct DisplayPanel: View {
             .disabled(manager.isWritingMonitor || manager.preview != nil)
         }
         DisplayExtrasView(manager: manager, display: display).id(display.identity)
+        .onChange(of: manager.hdrModes[display.id]) {
+            guard !manager.isTuningHDR else { return }
+            manager.clearMonitor()
+            manager.scanMonitor()
+        }
     }
 
     @ViewBuilder

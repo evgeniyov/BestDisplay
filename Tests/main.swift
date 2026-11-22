@@ -23,6 +23,7 @@ cecTests()
 displayIdentityMigrationTests()
 displayRestoreTests()
 panelSizeTests()
+hdrTuningPatternTests()
 
 if failures > 0 {
     print("\(failures) test(s) failed")

@@ -4,11 +4,11 @@ import SwiftUI
 struct DisplayHDRView: View {
     let manager: DisplayManager
     let display: Display
-    @State private var enabled: Bool?
     @State private var presets: DisplayReferencePresets?
     @State private var busy = false
 
     var body: some View {
+        let enabled = manager.hdrModes[display.id]
         VStack(alignment: .leading, spacing: 8) {
             Label("HDR / XDR", systemImage: "sun.max").font(.headline)
             if let info = EDRInfo(display), info.potential > 1.001 {
@@ -24,7 +24,11 @@ struct DisplayHDRView: View {
             }
             if let enabled {
                 Toggle("Использовать HDR", isOn: Binding(get: { enabled }, set: { setHDR($0) }))
-                    .disabled(busy || !manager.canChangeDisplayConfiguration)
+                    .disabled(busy || manager.isWritingMonitor || !manager.canChangeDisplayConfiguration)
+                if manager.hasDDCBrightness {
+                    Button("Настроить HDR…") { Task { await manager.tuneHDR(on: display) } }
+                        .disabled(busy || manager.isReadingMonitor || manager.isWritingMonitor || !manager.canChangeDisplayConfiguration)
+                }
             }
             if let presets, let active = presets.options.first(where: { $0.id == presets.active }) {
                 LabeledContent("Профиль XDR") {
@@ -46,7 +50,6 @@ struct DisplayHDRView: View {
     }
 
     private func refresh() {
-        enabled = DisplayHDRMode.status(for: display)
         presets = DisplayReferencePresets.read(display)
     }
 

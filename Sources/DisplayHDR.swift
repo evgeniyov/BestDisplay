@@ -9,9 +9,9 @@ import QuartzCore
 enum DisplayHDRMode {
     private typealias Query = @convention(c) (CGDirectDisplayID) -> Bool
     private typealias Set = @convention(c) (CGDirectDisplayID, Bool) -> Void
-    fileprivate static let library = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY | RTLD_LOCAL)
+    nonisolated(unsafe) fileprivate static let library = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY | RTLD_LOCAL)
     private static let supports = loadSymbol(library, "CoreDisplay_Display_SupportsHDRMode", as: Query.self)
-    private static let enabled = loadSymbol(library, "CoreDisplay_Display_IsHDRModeEnabled", as: Query.self)
+    private nonisolated static let enabled = loadSymbol(library, "CoreDisplay_Display_IsHDRModeEnabled", as: Query.self)
     private static let change = loadSymbol(library, "CoreDisplay_Display_SetHDRModeEnabled", as: Set.self)
 
     static func status(for display: Display) -> Bool? {
@@ -19,6 +19,8 @@ enum DisplayHDRMode {
               change != nil, supports?(display.id) == true else { return nil }
         return enabled?(display.id)
     }
+
+    nonisolated static func isEnabled(on id: CGDirectDisplayID) -> Bool { enabled?(id) == true }
 
     @MainActor
     static func set(_ value: Bool, on display: Display) async throws {
@@ -123,9 +125,21 @@ struct EDRInfo {
 }
 
 @MainActor
+private final class EDRTuningWindow: NSWindow {
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 53 {
+            close()
+        } else {
+            super.sendEvent(event)
+        }
+    }
+}
+
+@MainActor
 final class EDRPreview: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private(set) var patches: EDRPatches?
+    private var onClose: (() -> Void)?
 
     func show(for display: Display) throws {
         guard let edr = EDRInfo(display), edr.potential > 1.001, let device = MTLCreateSystemDefaultDevice(),
@@ -133,7 +147,6 @@ final class EDRPreview: NSObject, NSWindowDelegate {
             throw DisplayFailure("На этом дисплее macOS не сообщает доступный запас EDR.")
         }
 
-        close()
         let frame = edr.screen.visibleFrame
         let width = min(520.0, frame.width - 24)
         let height = min(250.0, frame.height - 24)
@@ -165,14 +178,50 @@ final class EDRPreview: NSObject, NSWindowDelegate {
             description.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12)
         ])
 
-        window.title = "HDR · \(display.title)"
+        present(window, title: "HDR · \(display.title)", content: content, patches: patches,
+                frame: window.frameRect(forContentRect: rect))
+    }
+
+    func showTuning(on screen: NSScreen, footer: NSView, onClose: @escaping () -> Void) throws {
+        guard let device = MTLCreateSystemDefaultDevice(), let patches = EDRPatches(edrDevice: device) else {
+            throw DisplayFailure("Не удалось открыть тест HDR через Metal.")
+        }
+        patches.update(levels: [], background: 0, fillsHeight: false)
+        let frame = screen.visibleFrame
+        let window = EDRTuningWindow(contentRect: frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isMovable = false
+        window.level = .floating
+        window.appearance = NSAppearance(named: .darkAqua)
+        let content = NSView()
+        for view in [patches, footer] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(view)
+            NSLayoutConstraint.activate([
+                view.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                view.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                view.bottomAnchor.constraint(equalTo: content.bottomAnchor)
+            ])
+        }
+        patches.topAnchor.constraint(equalTo: content.topAnchor).isActive = true
+        present(window, title: "Настройка HDR", content: content, patches: patches, frame: frame, onClose: onClose)
+    }
+
+    func fitTuning(to screen: NSScreen) {
+        guard let window, window.frame != screen.visibleFrame else { return }
+        window.setFrame(screen.visibleFrame, display: true)
+    }
+
+    private func present(_ window: NSWindow, title: String, content: NSView, patches: EDRPatches,
+                         frame: CGRect, onClose: (() -> Void)? = nil) {
+        close()
+        window.title = title
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = content
-        // An NSWindow initializer's content rectangle can be screen-relative if a screen is passed.
-        window.setFrameOrigin(rect.origin)
+        window.setFrame(frame, display: false)
         self.window = window
         self.patches = patches
+        self.onClose = onClose
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         content.layoutSubtreeIfNeeded()
@@ -186,6 +235,9 @@ final class EDRPreview: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         window = nil
         patches = nil
+        let didClose = onClose
+        onClose = nil
+        didClose?()
     }
 }
 
@@ -195,6 +247,9 @@ final class EDRPatches: MTKView {
     private let context: CIContext
     private let edrSpace: CGColorSpace
     private(set) var didPresentFrame = false
+    private var levels: [CGFloat] = [1, 1.5, 2]
+    private var background: CGFloat = 0
+    private var fillsHeight = true
 
     init?(edrDevice device: any MTLDevice) {
         guard let queue = device.makeCommandQueue(), let colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3) else { return nil }
@@ -217,13 +272,30 @@ final class EDRPatches: MTKView {
         (layer as? CAMetalLayer)?.wantsExtendedDynamicRangeContent = true
     }
 
+    func update(levels: [CGFloat], background: CGFloat, fillsHeight: Bool) {
+        guard self.levels != levels || self.background != background || self.fillsHeight != fillsHeight else { return }
+        self.levels = levels
+        self.background = background
+        self.fillsHeight = fillsHeight
+        needsDisplay = true
+    }
+
     override func draw(_ dirtyRect: NSRect) {
+        if #available(macOS 26.0, *), let layer = layer as? CAMetalLayer {
+            let headroom = max(1, levels.max() ?? 1)
+            layer.preferredDynamicRange = headroom > 1 ? .high : .standard
+            layer.contentsHeadroom = headroom
+        }
         guard let drawable = currentDrawable, let command = queue.makeCommandBuffer() else { return }
         let bounds = CGRect(x: 0, y: 0, width: drawable.texture.width, height: drawable.texture.height)
-        let width = bounds.width / 3
-        var image = CIImage(color: .black).cropped(to: bounds)
-        for (index, brightness) in [CGFloat(1), 1.5, 2].enumerated() {
-            let rectangle = CGRect(x: CGFloat(index) * width + 2, y: 0, width: max(0, width - 4), height: bounds.height)
+        let row = fillsHeight ? bounds : bounds.insetBy(dx: bounds.width * 0.08, dy: bounds.height * 0.28)
+        let width = row.width / CGFloat(max(1, levels.count))
+        guard let backdrop = CIColor(red: background, green: background, blue: background, alpha: 1,
+                                     colorSpace: edrSpace) else { return }
+        var image = CIImage(color: backdrop).cropped(to: bounds)
+        for (index, brightness) in levels.enumerated() {
+            let rectangle = CGRect(x: row.minX + CGFloat(index) * width + 2, y: row.minY,
+                                   width: max(0, width - 4), height: row.height)
             guard let color = CIColor(red: brightness, green: brightness, blue: brightness,
                                       alpha: 1, colorSpace: edrSpace) else { return }
             image = CIImage(color: color).cropped(to: rectangle).composited(over: image)

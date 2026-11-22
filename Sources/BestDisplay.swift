@@ -61,6 +61,7 @@ private final class ApplicationDelegate: NSObject, NSApplicationDelegate {
         notifications.append(center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                 object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
+                self?.manager.refreshHDRModes()
                 self?.manager.scheduleRefresh()
                 self?.positionPanel()
             }
@@ -175,10 +176,12 @@ private final class ApplicationDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard manager.preview != nil || manager.isChangingTopology else { return .terminateNow }
+        guard manager.preview != nil || manager.isChangingTopology || manager.isTuningHDR else { return .terminateNow }
         manager.revertPreview()
-        guard manager.isChangingTopology else { return .terminateNow }
+        if manager.isTuningHDR { manager.edrPreview.close() }
+        guard manager.isChangingTopology || manager.isTuningHDR else { return .terminateNow }
         Task {
+            while manager.isTuningHDR { try? await Task.sleep(for: .milliseconds(100)) }
             for _ in 0..<50 where manager.isChangingTopology {
                 try? await Task.sleep(for: .milliseconds(100))
             }

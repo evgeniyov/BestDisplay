@@ -6,6 +6,7 @@ extension DisplayManager {
     func clearMonitor() {
         monitorScanNumber += 1
         monitorValues = [:]
+        hasDDCBrightness = false
         isReadingMonitor = false
     }
 
@@ -17,14 +18,20 @@ extension DisplayManager {
         isReadingMonitor = true
         Task {
             let values = await monitorControls.scan(target)
+            var hasDDCBrightness = values[.brightness]?.system == false
+            if !display.builtIn, values[.brightness]?.system == true {
+                hasDDCBrightness = await monitorControls.ddcBrightness(of: target) != nil
+            }
             guard monitorScanNumber == request else { return }
             isReadingMonitor = false
             monitorValues = values
+            self.hasDDCBrightness = hasDDCBrightness
         }
     }
 
     func setMonitor(_ control: MonitorControl, value: Double) {
-        guard let display = selected, let current = monitorValues[control], !isWritingMonitor else { return }
+        guard let display = selected, let current = monitorValues[control], !isWritingMonitor, !isTuningHDR,
+              !control.locksInHDR || (canChangeDisplayConfiguration && DisplayHDRMode.status(for: display) != true) else { return }
         let target = MonitorTarget(id: display.id, identity: display.identity, location: display.location)
         let request = monitorScanNumber
         isWritingMonitor = true
@@ -76,7 +83,7 @@ extension DisplayManager {
     }
 
     func syncBrightness(from id: CGDirectDisplayID) async {
-        guard let source = screens.first(where: { $0.id == id }), !isWritingMonitor else { return }
+        guard let source = screens.first(where: { $0.id == id }), !isWritingMonitor, !isTuningHDR else { return }
         let sourceTarget = MonitorTarget(id: id, identity: source.identity, location: source.location)
         let targets = screens.filter { $0.id != id && !$0.isVirtual }
         isWritingMonitor = true

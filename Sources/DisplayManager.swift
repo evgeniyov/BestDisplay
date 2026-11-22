@@ -98,6 +98,7 @@ final class DisplayManager {
     private(set) var profiles: [DisplayProfile] = []
     private(set) var history: [DisplayHistoryEntry] = []
     var monitorValues: [MonitorControl: ControlValue] = [:]
+    var hasDDCBrightness = false
     var isReadingMonitor = false
     var isWritingMonitor = false
     private(set) var isChangingVirtual = false
@@ -131,6 +132,8 @@ final class DisplayManager {
     let monitorControls = MonitorControls()
     let softwareVolume = SoftwareVolume()
     let edrPreview = EDRPreview()
+    private var hdrTuning: HDRTuning?
+    private(set) var hdrModes: [CGDirectDisplayID: Bool] = [:]
     let storage: UserDefaults
     private let rememberedKey = "preferredDisplayModes"
     private let rememberedHDRKey = "preferredDisplayHDR"
@@ -156,6 +159,7 @@ final class DisplayManager {
     }
 
     var canChangeDisplayConfiguration: Bool { preview == nil && !isConfiguringDisplays }
+    var isTuningHDR: Bool { hdrTuning != nil }
 
     var selected: Display? { screens.first { $0.id == selectedID } }
     var virtualID: CGDirectDisplayID? { virtualDisplay?.id }
@@ -238,6 +242,10 @@ final class DisplayManager {
         } else {
             reconnected.remove(id)
             disconnected.insert(id)
+            if let hdrTuning, hdrTuning.display.id == id {
+                hdrTuning.disconnected = true
+                edrPreview.close()
+            }
         }
         if selectedID == id { clearMonitor() }
         scheduleRefresh()
@@ -247,6 +255,7 @@ final class DisplayManager {
         let previousIdentity = selected?.identity
         let onlineIDs = onlineDisplayIDs()
         screens = displays(among: onlineIDs, panelOverrides: panelOverrides)
+        refreshHDRModes()
         for display in screens {
             if let name = DisplayHistoryEntry.Screen.knownName(display.title) {
                 lastDisplayNames[display.identity] = name
@@ -904,6 +913,7 @@ final class DisplayManager {
         verification.cancel()
         isChangingDisplaySettings = true
         defer {
+            refreshHDRModes()
             isChangingDisplaySettings = false
             scheduleRefresh()
         }
@@ -911,10 +921,42 @@ final class DisplayManager {
     }
 
     func setHDR(_ enabled: Bool, on display: Display) async throws {
+        guard !isWritingMonitor else { throw DisplayFailure("Дождись окончания записи настроек монитора.") }
         try await changeDisplaySettings {
             try await DisplayHDRMode.set(enabled, on: display)
             rememberHDR(enabled, for: display.identity)
             message = enabled ? "Режим HDR включён." : "Режим HDR выключен."
+        }
+    }
+
+    func refreshHDRModes() {
+        let modes = Dictionary(uniqueKeysWithValues: screens.compactMap { display in
+            DisplayHDRMode.status(for: display).map { (display.id, $0) }
+        })
+        if modes != hdrModes { hdrModes = modes }
+    }
+
+    func tuneHDR(on display: Display) async {
+        guard canChangeDisplayConfiguration, !isReadingMonitor, !isWritingMonitor,
+              selected?.id == display.id, selected?.identity == display.identity, hasDDCBrightness else { return }
+        let tuning = HDRTuning(display: display)
+        do {
+            try await changeDisplaySettings {
+                hdrTuning = tuning
+                defer {
+                    hdrTuning = nil
+                    if selected?.id == display.id, selected?.identity == display.identity {
+                        clearMonitor()
+                        scanMonitor()
+                    }
+                }
+                if try await tuning.run(in: edrPreview, controls: monitorControls),
+                   let enabled = DisplayHDRMode.status(for: display) {
+                    rememberHDR(enabled, for: display.identity)
+                }
+            }
+        } catch {
+            message = error.localizedDescription
         }
     }
 

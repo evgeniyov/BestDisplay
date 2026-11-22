@@ -34,6 +34,13 @@ enum MonitorControl: String, CaseIterable, Sendable {
         }
     }
 
+    var locksInHDR: Bool {
+        switch self {
+        case .contrast, .redGain, .greenGain, .blueGain: true
+        case .brightness, .volume: false
+        }
+    }
+
     fileprivate var vcp: UInt8 {
         switch self {
         case .brightness: 0x10
@@ -192,6 +199,11 @@ actor MonitorControls {
         return SystemBrightness.value(target.id) ?? DDCLink.find(for: target)?.get(.brightness)
     }
 
+    func ddcBrightness(of target: MonitorTarget) -> ControlValue? {
+        guard target.stillOnline else { return nil }
+        return DDCLink.find(for: target)?.get(.brightness)
+    }
+
     func scan(_ target: MonitorTarget) -> [MonitorControl: ControlValue] {
         guard target.stillOnline else { return [:] }
         var values: [MonitorControl: ControlValue] = [:]
@@ -204,8 +216,15 @@ actor MonitorControls {
         return values
     }
 
-    func set(_ value: Double, for control: MonitorControl, current: ControlValue, target: MonitorTarget) throws -> ControlValue {
+    func set(_ value: Double, for control: MonitorControl, current: ControlValue, target: MonitorTarget,
+             requiresHDR: Bool = false) throws -> ControlValue {
         guard value.isFinite, target.stillOnline else { throw DisplayFailure("Дисплей отключён.") }
+        if requiresHDR, !DisplayHDRMode.isEnabled(on: target.id) {
+            throw DisplayFailure("Режим HDR выключился во время настройки.")
+        }
+        if control.locksInHDR, DisplayHDRMode.isEnabled(on: target.id) {
+            throw DisplayFailure("Выключи HDR, чтобы изменить контраст и цвет монитора.")
+        }
         let value = min(1, max(control == .brightness ? 0.01 : 0, value))
         if current.system, control == .brightness,
            SystemBrightness.write?(target.id, Float(value)) == 0 {
@@ -213,11 +232,36 @@ actor MonitorControls {
         }
         let raw = UInt16((Double(current.maximum) * value).rounded())
         let displayValue = control == .brightness ? max(1, raw) : raw
-        if !current.system, let link = DDCLink.find(for: target), link.set(control, displayValue) {
-            usleep(50_000)
-            if let result = link.get(control) { return result }
-        }
+        if !current.system, let result = setDDC(displayValue, for: control, target: target) { return result }
         throw DisplayFailure("Монитор не подтвердил изменение. Обнови список доступных настроек.")
+    }
+
+    func restoreHDRBrightness(_ original: ControlValue, target: MonitorTarget) throws {
+        guard target.stillOnline, DisplayHDRMode.isEnabled(on: target.id) else {
+            throw DisplayFailure("Не удалось восстановить яркость HDR.")
+        }
+        let restored: ControlValue?
+        if original.system {
+            guard SystemBrightness.write?(target.id, Float(original.value)) == 0 else {
+                throw DisplayFailure("Не удалось восстановить яркость HDR.")
+            }
+            restored = SystemBrightness.value(target.id)
+        } else {
+            let raw = UInt16((original.value * Double(original.maximum)).rounded())
+            restored = setDDC(raw, for: .brightness, target: target)
+        }
+        guard let restored, restored.maximum == original.maximum,
+              abs(restored.value - original.value) < 0.000_001 else {
+            throw DisplayFailure("Монитор не подтвердил восстановление яркости HDR.")
+        }
+    }
+
+    private func setDDC(_ value: UInt16, for control: MonitorControl, target: MonitorTarget) -> ControlValue? {
+        if let link = DDCLink.find(for: target), link.set(control, value) {
+            usleep(50_000)
+            return link.get(control)
+        }
+        return nil
     }
 }
 

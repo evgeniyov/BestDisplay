@@ -11,6 +11,6 @@ xcrun swiftc -swift-version 6 -target arm64-apple-macosx14.0 \
   -module-cache-path "$PWD/.build/ModuleCache" \
   Sources/CubeLUT.swift Sources/ProfileURL.swift Sources/HardwareOptions.swift \
   Sources/DisplaySettings.swift Sources/DisplayIdentity.swift Sources/DisplayIdentityMigration.swift \
-  Sources/DisplayRestoreState.swift Sources/PanelSize.swift \
+  Sources/DisplayRestoreState.swift Sources/HDRTuningPattern.swift Sources/PanelSize.swift \
   Sources/Placement.swift Sources/HDMICEC.swift Tests/*.swift -o "$out/tests"
 "$out/tests"
