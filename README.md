@@ -1,64 +1,66 @@
 # BestDisplay
 
-Нативное приложение для управления дисплеями из строки меню macOS. Сборка для Apple Silicon, без сетевых запросов и сторонних зависимостей.
+BestDisplay is a macOS menu bar app for managing displays. It runs on Apple Silicon, makes no network requests and has no third-party dependencies.
 
-## Начать
+The app's interface is in Russian. This README quotes each control as the app shows it and gives an English translation the first time.
 
-Открой BestDisplay и нажми значок монитора в правой части строки меню. В панели можно переключаться между всеми подключёнными дисплеями.
+## Getting started
 
-### Масштаб и чёткость
+Open BestDisplay and click the display icon on the right side of the menu bar. The panel lists every connected display, and you can switch between them.
 
-Для HP 27f в раздел сравнения входят три режима с частотой 75 Гц.
+### Scale and sharpness
 
-- **1920×1080 · 1×** рисует интерфейс в физическом разрешении панели.
-- **1920×1080 · HiDPI** сохраняет размер интерфейса и рисует его в 3840×2160 перед уменьшением под панель.
-- **1600×900 · HiDPI** увеличивает элементы интерфейса примерно на 20% и рисует их в 3200×1800.
+For an HP 27f, the comparison section offers three modes at 75 Hz:
 
-Нажми **Проверить**, сравни мелкий текст и нажми **Оставить**, если режим подходит. Через 20 секунд BestDisplay вернёт предыдущие параметры, если подтверждения не было. **Запомнить режим** восстанавливает подтверждённый режим для этого дисплея при запуске BestDisplay, подключении и пробуждении экранов, если macOS всё ещё предлагает этот режим. macOS сама применяет сохранённый системный режим при подключении, пока системный идентификатор дисплея остаётся прежним. Запуск BestDisplay при входе включается в меню **⋯**.
+- **1920×1080 · 1×** draws the interface at the panel's physical resolution.
+- **1920×1080 · HiDPI** keeps the interface size and draws it at 3840×2160 before scaling it down to the panel.
+- **1600×900 · HiDPI** makes interface elements about 20% larger and draws them at 3200×1800.
 
-### Профили подключения и история
+Click **Проверить** (Test), compare small text, and click **Оставить** (Keep) if the mode suits you. If you don't confirm within 20 seconds, BestDisplay restores the previous settings. **Запомнить режим** (Remember mode) restores the confirmed mode for that display when BestDisplay starts, when the display connects and when screens wake, as long as macOS still offers the mode. BestDisplay also saves the mode in macOS, so macOS applies it on connection while the display keeps the same system identifier. To start BestDisplay at login, use the **⋯** menu.
 
-Во вкладке **Профили** нажми **Сохранить…** и назови текущую конфигурацию. BestDisplay запоминает основной экран, положение, масштаб и частоту каждого дисплея. Для другого набора сначала подключи нужные дисплеи и затем сохрани его как отдельный профиль.
+If a monitor does not report its panel size, BestDisplay infers the size from the refresh rates of its 1× modes and labels it "по частоте обновления" (by refresh rate). Click the **Панель** (Panel) value to pick the size yourself.
 
-Автоприменение работает при запуске BestDisplay, подключении, отключении и пробуждении. Оно выбирает профиль по точному набору дисплеев и имеет приоритет над режимами, запомненными отдельно. Кнопка **Применить** позволяет проверить профиль 20 секунд с возможностью отката. **Обновить…** пересохраняет профиль текущего набора.
+### Connection profiles and history
 
-Во вкладке **История** хранятся последние 100 событий на этом Mac. Раскрой запись, чтобы увидеть режимы до восстановления, запрошенные и фактически применённые. Здесь же видны случаи, когда сохранённый режим стал недоступен.
+On the **Профили** (Profiles) tab, click **Сохранить…** (Save…) and name the current configuration. BestDisplay saves the main display and each display's position, scale and refresh rate. To save a different set of displays, connect those displays first and save them as a separate profile.
 
-### Защита конфигурации и цвет
+Automatic profiles apply when BestDisplay starts and when displays connect, disconnect or wake. BestDisplay picks the profile that matches the exact set of connected displays, and the profile takes priority over modes remembered per display. **Применить** (Apply) lets you try a profile for 20 seconds with rollback. **Обновить…** (Update…) saves the current set again under the same profile.
 
-В карточке профиля включи **Защищать настройки во время работы**, чтобы восстанавливать масштаб, частоту, основной экран, расположение и ICC после внешнего изменения. Смена режима, подтверждённая в самом BestDisplay, обновляет защищённый профиль. История показывает срабатывания защиты и результат восстановления. Для профилей, сохранённых в 0.2.1, нажми **Обновить…**, чтобы добавить текущие ICC-профили.
+The **История** (History) tab keeps the last 100 events on this Mac. Expand an event to see the modes before the restore, the requested modes and the modes macOS applied. The tab also shows when a saved mode became unavailable.
 
-Во вкладке **Расположение** меню **Поворот** проверяет ориентацию совместимого внешнего дисплея с откатом через 20 секунд. **Восстанавливать поворот и видеоповтор** сохраняет текущую схему для этого набора физических дисплеев, включая режим отдельных рабочих столов. Подтверждённые изменения в BestDisplay обновляют сохранённую схему.
+### Configuration protection and color
 
-Во вкладке **Управление** можно выбрать RGB ICC-файл дисплея и вернуться к заводскому профилю. Раздел **Цвет рабочего стола и ICC** меняет гамму, контраст и усиление отдельных каналов RGB через таблицу цветов дисплея. **Снять фильтр** возвращает прежнюю калибровку. **Сохранить ICC…** записывает копию действующего профиля с новой таблицей калибровки, которую можно применить через **Выбрать ICC…**. Резкость и импорт **3D LUT .cube** с диапазоном 0…1 и размером до 64³ доступны в PiP.
+In a profile card, turn on **Защищать настройки во время работы** (Protect settings while running). BestDisplay then restores scale, refresh rate, main display, arrangement and ICC profiles after an outside change. A mode change you confirm in BestDisplay updates the protected profile. History shows each time protection ran and the result. For profiles saved in 0.2.1, click **Обновить…** to add the current ICC profiles.
 
-### Видеовходы, яркость и звук
+On the **Расположение** (Arrangement) tab, the **Поворот** (Rotation) menu tests the orientation of a compatible external display and reverts after 20 seconds. **Восстанавливать поворот и видеоповтор** (Restore rotation and mirroring) saves the current layout for this set of physical displays, including extended desktop mode. Changes you confirm in BestDisplay update the saved layout.
 
-- **Управление** показывает доступные аппаратные регуляторы и программное затемнение. BestDisplay умеет читать яркость, контраст, громкость и RGB-усиление по DDC/CI.
-- **Прочитать DDC** запрашивает список входов и режимов питания у монитора. Приложение показывает только явно сообщённые команды и просит подтверждение перед отправкой. Для переключения нужен второй доступный экран.
-- **Передать яркость другим дисплеям** одним действием переносит уровень с выбранного монитора на остальные совместимые экраны.
-- **В группе яркости** связывает выбранные физические экраны. Изменения из BestDisplay передаются подключённым участникам группы. Аппаратные кнопки монитора и изменения из других приложений группа не отслеживает.
-- **Системная громкость** появляется для текущего аудиовыхода, если CoreAudio позволяет менять его громкость.
+On the **Управление** (Controls) tab, you can choose an RGB ICC file for a display and return to the factory profile. **Цвет рабочего стола и ICC** (Desktop color and ICC) changes gamma, contrast and per-channel RGB gain through the display's color table. **Снять фильтр** (Remove filter) restores the previous calibration. **Сохранить ICC…** (Save ICC…) writes a copy of the active profile with the new calibration table, and **Выбрать ICC…** (Choose ICC…) applies it. Sharpening and **3D LUT .cube** import, with values from 0 to 1 and sizes up to 64³, are available in picture-in-picture.
 
-### HDR, XDR, HDMI-CEC и программная громкость
+### Video inputs, brightness and sound
 
-- **HDR / XDR** на вкладке **Управление** показывает запас EDR. Тест выводит рядом эталонный белый SDR и два более ярких участка через Metal. Переключатель HDR и выбор эталонных профилей XDR появляются, когда macOS сообщает о соответствующей функции. Профили используют штатные пределы яркости дисплея.
-- **HDMI-CEC** управляет питанием ТВ и выбирает HDMI-вход с Mac через совместимый USB–CEC адаптер и `cec-client` из [libCEC](https://github.com/Pulse-Eight/libcec). С установленным Homebrew команда `brew install libcec` добавляет утилиту. Нажми **Найти адаптеры**, выбери адаптер и запроси состояние ТВ. Если вход определяется неверно, выбери его номер в поле **HDMI-вход ТВ**. Команды питания и выбора входа требуют подтверждения.
-- **Программная громкость** работает с macOS 14.2 и аудиовыходом с одним стереопотоком без входных каналов. После включения разреши захват системного звука, если macOS спросит, и воспроизведи звук. Регулятор ослабляет сигнал от 100% до 0% с помощью Core Audio. Аудио обрабатывается в памяти. Смена выхода, сон и завершение BestDisplay отключают обработку.
+- **Управление** shows the available hardware controls and software dimming. BestDisplay reads brightness, contrast, volume and RGB gain over DDC/CI.
+- **Прочитать DDC** (Read DDC) asks the monitor for its inputs and power modes. The app shows only the commands the monitor reports and asks for confirmation before it sends one. Switching inputs needs a second active display.
+- **Передать яркость другим дисплеям** (Send brightness to other displays) copies the brightness of the selected monitor to the other compatible displays.
+- **В группе яркости** (In brightness group) links the selected physical displays. Changes made in BestDisplay reach every connected member of the group. The group does not follow the monitor's hardware buttons or changes from other apps.
+- **Системная громкость** (System volume) appears for the current audio output when CoreAudio allows changing its volume.
 
-### PiP, видеоповтор и диагностика
+### HDR, XDR, HDMI-CEC and software volume
 
-- В меню **⋯ → Картинка в картинке…** системный выбор источника позволяет указать экран или окно. Поток отображается локально, в плавающем окне или на весь экран. Закрытие окна останавливает поток.
-- **Расположение** позволяет выбрать основной экран, задать положение соседнего экрана и создать временный виртуальный рабочий стол. **Показывать изображение с…** проверяет видеоповтор, включая вывод виртуального экрана на физический, с таймером отката.
-- Если встроенный экран выбран основным, совместимый внешний дисплей можно отключить программно. Команда **Подключить** в **Расположение** и **⋯** возвращает дисплей.
-- Через **⋯** можно скопировать диагностику дисплеев без серийных номеров.
-- **Все режимы** открывает список разрешений и частот с поиском и фильтром HiDPI.
+- **HDR / XDR** on the **Управление** tab shows the EDR headroom. The test draws SDR reference white next to two brighter patches through Metal. The HDR switch and the XDR reference profiles appear when macOS reports those features. The profiles use the display's built-in brightness limits.
+- **HDMI-CEC** turns a TV on and off and selects its HDMI input from the Mac through a compatible USB-CEC adapter and `cec-client` from [libCEC](https://github.com/Pulse-Eight/libcec). With Homebrew installed, `brew install libcec` adds the tool. Click **Найти адаптеры** (Find adapters), choose an adapter and request the TV's state. If the input is detected wrong, choose its number in **HDMI-вход ТВ** (TV HDMI input). Power and input commands ask for confirmation.
+- **Программная громкость** (Software volume) works on macOS 14.2 and later with an audio output that has one stereo stream and no input channels. After you turn it on, allow system audio capture if macOS asks, and play some sound. The slider attenuates the signal from 100% to 0% through Core Audio. Audio stays in memory. Switching the output, sleep and quitting BestDisplay turn the processing off.
 
+### Picture-in-picture, mirroring and diagnostics
 
+- In the **⋯** menu, **Картинка в картинке…** (Picture in picture…) opens the system source picker, where you choose a screen or a window. The stream plays locally, in a floating window or full screen. Closing the window stops the stream.
+- **Расположение** lets you choose the main display, set where a neighboring display sits and create a temporary virtual desktop. **Показывать изображение с…** (Show image from…) tests mirroring, including mirroring a virtual display to a physical one, with a rollback timer.
+- When the built-in display is the main display, you can disconnect a compatible external display in software. **Подключить** (Connect) on **Расположение** or in **⋯** brings the display back.
+- **⋯** copies display diagnostics without serial numbers.
+- **Все режимы** (All modes) opens the list of resolutions and refresh rates with search and a HiDPI filter.
 
-## Терминал и «Команды»
+## Terminal and Shortcuts
 
-Исполняемый файл установленного приложения можно вызывать из терминала или через действие **Запустить скрипт оболочки** в macOS «Команды».
+You can run the installed app's executable from Terminal or from the **Run Shell Script** action in the macOS Shortcuts app.
 
 ```sh
 /Applications/BestDisplay.app/Contents/MacOS/BestDisplay --report
@@ -66,11 +68,11 @@
 /Applications/BestDisplay.app/Contents/MacOS/BestDisplay --preview-profile "Ноутбук + HP 27f"
 ```
 
-Для действия **Открыть URL** подходит схема `bestdisplay://profile?name=Desk%20%2B%20HP`. Подставь URL-кодированное имя сохранённого профиля. Команда открывает панель с проверкой профиля. Настройки сохраняются до выхода из сеанса после нажатия **Оставить**.
+For the **Open URLs** action, use the `bestdisplay://profile?name=Desk%20%2B%20HP` scheme with the URL-encoded name of a saved profile. The URL opens the panel and starts a profile test. After you click **Оставить**, the settings last until you log out.
 
-## Сборка и DMG
+## Building and the DMG
 
-Нужны Xcode с поддержкой Swift 6 и Mac на Apple Silicon. Сборка нацелена на macOS 14 и новее. Аппаратная проверка проводилась на Apple M4 с macOS 27.2.1.
+You need Xcode with Swift 6 and an Apple Silicon Mac. The build targets macOS 14 and later. Hardware testing was done on an Apple M4 with macOS 27.2.1.
 
 ```sh
 ./Scripts/build.sh
@@ -79,8 +81,8 @@ BESTDISPLAY_SIGN_IDENTITY="BestDisplay Local" ./Scripts/package-dmg.sh
 ./Scripts/test.sh
 ```
 
-`Scripts/test.sh` запускает модульные тесты разбора `.cube`, DDC-возможностей, CEC и URL профилей без дисплеев. Иконку можно пересоздать командой `swift Scripts/make-icon.swift`. История проверок на оборудовании ведётся в [CHANGELOG.md](CHANGELOG.md). Лицензия: [MIT](LICENSE).
+`Scripts/test.sh` runs unit tests that need no displays. They cover `.cube` parsing, DDC capabilities, CEC, profile URLs, display identity migration, restore state and panel size detection. To regenerate the icon, run `swift Scripts/make-icon.swift`. [CHANGELOG.md](CHANGELOG.md) records the hardware tests. License: [MIT](LICENSE).
 
-Образ появляется в `build/` и содержит BestDisplay.app и ярлык «Applications». Установи приложение в эту папку, чтобы macOS использовала один путь и одну подпись. Подпись BestDisplay Local предназначена для этого Mac. На другом Mac можно собрать с доступной там подписью, передав её имя через `BESTDISPLAY_SIGN_IDENTITY`. Без этого параметра сборка подписывается ad hoc. Локальные образы без Apple Developer ID не нотарифицированы.
+The disk image lands in `build/` and contains BestDisplay.app and an Applications shortcut. Install the app into that folder so macOS sees one path and one signature. The BestDisplay Local identity exists only on the author's Mac. On another Mac, pass the name of a signing identity available there in `BESTDISPLAY_SIGN_IDENTITY`. Without it, the build is signed ad hoc. Local images signed without an Apple Developer ID are not notarized.
 
-Переключение HDR и профилей XDR, поворот, скрытые режимы, аппаратная яркость, DDC/CI и виртуальные экраны используют интерфейсы macOS, которые Apple не публикует как часть SDK. BestDisplay загружает эти интерфейсы во время работы. Доступность зависит от версии macOS и оборудования. [Apple Quartz Display Services](https://developer.apple.com/documentation/CoreGraphics/quartz-display-services), [displayplacer](https://github.com/jakehilborn/displayplacer), [m1ddc](https://github.com/waydabber/m1ddc), [виртуальный дисплей в Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/ui/display/mac/test/virtual_display_util_mac.mm).
+HDR and XDR profile switching, rotation, hidden modes, hardware brightness, DDC/CI and virtual displays use macOS interfaces that Apple does not publish in the SDK. BestDisplay loads them at runtime, and whether they work depends on the macOS version and the hardware. References: [Apple Quartz Display Services](https://developer.apple.com/documentation/CoreGraphics/quartz-display-services), [displayplacer](https://github.com/jakehilborn/displayplacer), [m1ddc](https://github.com/waydabber/m1ddc), [virtual display in Chromium](https://chromium.googlesource.com/chromium/src/+/HEAD/ui/display/mac/test/virtual_display_util_mac.mm).

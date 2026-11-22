@@ -1,30 +1,30 @@
-# Журнал изменений
+# Changelog
 
 ## Unreleased
 
-- Для внешних мониторов без данных о панели BestDisplay уточняет её разрешение по частотам режимов 1× и позволяет выбрать размер вручную во вкладке «Масштаб».
-- Запомненный системный режим сохраняется в macOS и применяется при подключении дисплея даже без запущенного BestDisplay, пока macOS не сменит его системный идентификатор.
-- Запомненные режимы, профили, защита расположения и группа яркости сохраняются при переподключении мониторов с серийным номером. Старые записи переносятся автоматически, а запомненный режим со сменившимся UUID можно восстановить по истории подключений.
-- После запуска, подключения и пробуждения BestDisplay ещё 10 секунд проверяет сохранённые режимы и автопрофиль. В историю попадают только исправленные повторные изменения. Ручное изменение завершает проверку.
-- Восстановление ждёт завершения предпросмотра и обрабатывает готовые дисплеи, даже если macOS ещё не сообщила режимы остальных. Защита конфигурации повторяет проверку после паузы.
-- Программное подключение ждёт дисплей без полного перебора режимов и блокирует другие изменения конфигурации на время операции. Собственный виртуальный дисплей не запускает автопрофиль при подключении и отключении.
-- Подтверждение раскладки сверяет запрошенные координаты и выбор основного дисплея. В истории при пустом названии используется последнее известное имя или ID дисплея.
-- Мониторы с одинаковым аппаратным идентификатором различаются по UUID, пока они подключены одновременно.
+- External monitors that don't report their panel size get a size inferred from the refresh rates of their 1× modes. You can also pick the size by hand on the Scale tab.
+- A remembered mode is also saved in macOS. macOS applies it when the display connects, even when BestDisplay isn't running, until macOS gives the display a new system identifier.
+- Remembered modes, profiles, layout protection and the brightness group now survive reconnecting monitors that report a serial number. Old entries move over automatically. A remembered mode whose UUID changed can be recovered from the connection history.
+- After launch, connection and wake, BestDisplay keeps checking saved modes and the automatic profile for 10 more seconds. History records a repeated change only when BestDisplay corrected it. A manual change ends the check.
+- Restore waits for a running preview to finish. It handles displays that are ready even if macOS hasn't yet reported modes for the others. Configuration protection checks again after its pause.
+- Software reconnect waits for the display without enumerating every mode, and it blocks other configuration changes until it finishes. BestDisplay's own virtual display no longer triggers the automatic profile when it connects or disconnects.
+- Confirming a layout checks the requested coordinates and the chosen main display. When a display has no name, history uses its last known name or its display ID.
+- Monitors that share a hardware identifier are told apart by UUID while both are connected.
 
 ## 0.5.1
 
-- Иконка приложения, лицензия MIT и CI на GitHub Actions (тесты и полная сборка на `macos-26`).
-- Исправлен крэш компилятора Swift 6.1–6.3 (IRGen): `Binding(get:set:)` получал ссылки на `@MainActor`-методы (`setHDR`, `setLogin`) вместо замыканий.
-- Выражение в карте расположения разбито, чтобы не упираться в лимит тайп-чекера.
-- Модульные тесты (`Scripts/test.sh`).
-- HDMI-CEC: проверка списка адаптеров кешируется на 15 секунд, команды отправляются быстрее.
-- `DisplayManager` разделён: `ScreenDimmer`, `Placement` и расширения для DDC-яркости и отчёта вынесены в отдельные файлы.
-- Запомненный режим сохраняется через общий `persist`, версия в отчёте больше не подставляет устаревшее значение.
+- App icon, MIT license, and CI on GitHub Actions that runs the tests and a full build on `macos-26`.
+- Fixed a Swift 6.1-6.3 compiler crash in IRGen. `Binding(get:set:)` received references to the `@MainActor` methods `setHDR` and `setLogin` instead of closures.
+- Split an expression in the layout map so it stays under the type checker's limit.
+- Added unit tests in `Scripts/test.sh`.
+- HDMI-CEC caches the adapter list for 15 seconds, so commands go out faster.
+- Split `DisplayManager`. `ScreenDimmer`, `Placement`, and the extensions for DDC brightness and the report now live in separate files.
+- The remembered mode is saved through the shared `persist` helper. The report no longer shows a stale version.
 
-## Проверка на оборудовании 0.4.0
+## Hardware test for 0.4.0
 
-На HP 27f и встроенном Retina проверены откат поворота, восстановление ориентации после внешнего изменения, защита видеоповтора в обе стороны, запись сгенерированного ICC, чтение и сброс изменённой цветовой таблицы HP и передача аппаратной яркости с HP на Retina. Тесты вернули прежние режимы, раскладку, яркость и ICC.
+On an HP 27f and the built-in Retina display, the tests covered rotation rollback, restoring orientation after an outside change, mirroring protection in both directions, writing a generated ICC profile, reading and resetting the HP's modified color table, and copying hardware brightness from the HP to the Retina display. Each test returned the original modes, layout, brightness and ICC profile.
 
-## Проверка на оборудовании 0.5.0
+## Hardware test for 0.5.0
 
-На MacBook Air M4 в тестовом окне встроенный Retina достиг активного запаса EDR 2× при яркости 40%. При исходной яркости 100% в этом тесте macOS сообщала 1×. Исходная яркость восстановлена. HP 27f работает в SDR. В этой конфигурации недоступны переключение внешнего HDR и выбор профилей XDR. На встроенных динамиках проверена программная регулировка с сохранением исходного системного выхода. Команды HDMI-CEC проверены на тестовом клиенте libCEC. Для проверки на телевизоре нужен USB–CEC адаптер.
+On a MacBook Air M4, the built-in Retina display reached 2× active EDR headroom in the test window at 40% brightness. At the starting brightness of 100%, macOS reported 1× in this test. The starting brightness was restored afterward. The HP 27f runs in SDR, and in this setup external HDR switching and XDR profile selection are unavailable. Software volume was tested on the built-in speakers, and the original system output was kept. HDMI-CEC commands were tested against a libCEC test client. Testing on a TV needs a USB-CEC adapter.
