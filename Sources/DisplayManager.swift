@@ -142,6 +142,7 @@ final class DisplayManager {
     @ObservationIgnored private var previewTimer: Timer?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var recheckTask: Task<Void, Never>?
+    @ObservationIgnored private var persistedModes: [String: ModeKey] = [:]
     private var recheckDeadline: TimeInterval?
 
     private var isConfiguringDisplays: Bool {
@@ -534,6 +535,19 @@ final class DisplayManager {
         }
         if corrected || triggers != [.verification] {
             addHistory(triggers, before: before, requested: requested, result: result)
+        }
+        for display in screens where requested[display.identity] == display.current.key {
+            persistActiveMode(of: display)
+        }
+    }
+
+    private func persistActiveMode(of display: Display) {
+        let systemID = legacyDisplayIdentity(display.id) ?? display.identity
+        guard persistedModes[systemID] != display.current.key, display.currentModeIsPublic,
+              !display.isVirtual, display.id != virtualID, !display.isInMirrorSet else { return }
+        persistedModes[systemID] = display.current.key
+        try? configureDisplays(option: .permanently) { config in
+            try setMode(config, display: display.id, mode: display.current)
         }
     }
 
@@ -1188,11 +1202,14 @@ final class DisplayManager {
     }
 
     func setRemembered(_ enabled: Bool, for identity: String) {
-        guard canChangeDisplayConfiguration, !identity.hasPrefix("session-"), let display = screens.first(where: { $0.identity == identity }) else { return }
+        guard canChangeDisplayConfiguration, !identity.hasPrefix("session-") else { return }
+        if enabled { refresh() }
+        guard let display = screens.first(where: { $0.identity == identity }) else { return }
         verification.cancel()
         remembered[identity] = enabled ? display.current.key : nil
         persist(remembered, for: rememberedKey)
         message = nil
+        if enabled { persistActiveMode(of: display) }
     }
 
     var dimming: [String: Double] { dimmer.levels }

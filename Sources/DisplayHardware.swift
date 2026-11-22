@@ -41,6 +41,7 @@ struct Display: Identifiable {
     let mirrors: CGDirectDisplayID
     let bounds: CGRect
     let current: ScreenMode
+    let currentModeIsPublic: Bool
     let modes: [ScreenMode]
     let panel: Dimensions?
     let location: String?
@@ -133,6 +134,8 @@ func displays(among ids: [CGDirectDisplayID] = onlineDisplayIDs()) -> [Display] 
         let identity = displayIdentity(id, among: ids) ?? "session-\(id)"
         let options = [kCGDisplayShowDuplicateLowResolutionModes as String: true] as CFDictionary
         let offered = CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode] ?? []
+        // Quartz can report the current mode even when it omits it from the public catalog.
+        let currentModeIsPublic = offered.contains { $0.ioDisplayModeID == current.modeID }
         let location = info["IODisplayLocation"] as? String
         let builtIn = CGDisplayIsBuiltin(id) != 0
         let publicModes = offered.filter { $0.isUsableForDesktopGUI() }.map(ScreenMode.init)
@@ -173,7 +176,8 @@ func displays(among ids: [CGDirectDisplayID] = onlineDisplayIDs()) -> [Display] 
                        isVirtual: info["kCGDisplayIsVirtualDevice"] as? Bool == true,
                        isInMirrorSet: CGDisplayIsInMirrorSet(id) != 0,
                        isMain: CGDisplayIsMain(id) != 0, mirrors: CGDisplayMirrorsDisplay(id),
-                       bounds: CGDisplayBounds(id), current: current, modes: modes,
+                       bounds: CGDisplayBounds(id), current: current,
+                       currentModeIsPublic: currentModeIsPublic, modes: modes,
                        panel: panel, location: location,
                        edr: screen?.maximumPotentialExtendedDynamicRangeColorComponentValue, color: DisplayColor.read(id))
     }
@@ -186,7 +190,9 @@ struct DisplayFailure: LocalizedError {
 }
 
 @MainActor
-func configureDisplays(_ operation: (CGDisplayConfigRef) throws -> Void) throws {
+func configureDisplays(
+    option: CGConfigureOption = .forSession, _ operation: (CGDisplayConfigRef) throws -> Void
+) throws {
     var configuration: CGDisplayConfigRef?
     let begin = CGBeginDisplayConfiguration(&configuration)
     guard begin == .success, let configuration else {
@@ -198,7 +204,7 @@ func configureDisplays(_ operation: (CGDisplayConfigRef) throws -> Void) throws 
         CGCancelDisplayConfiguration(configuration)
         throw error
     }
-    try checkDisplayError(CGCompleteDisplayConfiguration(configuration, .forSession))
+    try checkDisplayError(CGCompleteDisplayConfiguration(configuration, option))
 }
 
 func checkDisplayError(_ result: CGError) throws {
