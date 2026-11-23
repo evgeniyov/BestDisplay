@@ -191,6 +191,21 @@ func displayIdentityMigrationTests() {
     let spareSerial = "hw-16652-49780-123"
     let afterWake = DisplayIdentityMigration.OnlineDisplay(identity: changedSerial, legacyUUID: newer,
                                                            name: name, modes: [])
+    let offset = CGPoint(x: -1440, y: 100)
+    let olderLayout = DisplayLayout(main: older, origins: [older: .zero, other: offset])!
+    let latestLayout = DisplayLayout(main: legacy, origins: [legacy: .zero, other: offset])!
+    let otherLayout = DisplayLayout(main: other, origins: [other: .zero, legacy: offset])!
+    let layoutsOnly = DisplayIdentityMigration(remembered: [:], profiles: [], topologies: [],
+                                               layouts: [olderLayout, otherLayout, latestLayout], brightnessGroup: [])
+    let layoutsAfterUUID = layoutsOnly.migrated(online: [philips], history: [event(older, at: 1)])
+    check(layoutsAfterUUID.layouts == [DisplayLayout(main: hardware, origins: [hardware: .zero, other: offset])!],
+          "UUID migration rewrites layout key, main and origins and keeps the newest layout")
+    let layoutsAfterSerial = layoutsAfterUUID.migrated(online: [afterWake], history: [])
+    check(layoutsAfterSerial.layouts == [
+        DisplayLayout(main: changedSerial, origins: [changedSerial: .zero, other: offset])!
+    ], "A layout alone follows the changed serial")
+    check(layoutsAfterSerial.migrated(online: [afterWake], history: []) == layoutsAfterSerial,
+          "Layout migration is idempotent")
     var beforeWake = migrated
     beforeWake.migratedHardwareIDs.insert(changedSerial)
     beforeWake.topologies.insert(

@@ -22,6 +22,7 @@ placementTests()
 cecTests()
 displayIdentityMigrationTests()
 displayRestoreTests()
+displayLayoutTests()
 panelSizeTests()
 hdrTuningPatternTests()
 

@@ -12,6 +12,7 @@ struct DisplayIdentityMigration: Equatable {
     var rememberedHDR: [String: Bool] = [:]
     var profiles: [DisplayProfile]
     var topologies: [DisplayTopology]
+    var layouts: [DisplayLayout] = []
     var brightnessGroup: Set<String>
     var migratedHardwareIDs: Set<String> = []
 
@@ -80,6 +81,7 @@ struct DisplayIdentityMigration: Equatable {
             storedIDs.formUnion(topology.mirrors.keys)
             storedIDs.formUnion(topology.mirrors.values)
         }
+        for layout in layouts { storedIDs.formUnion(layout.identities) }
 
         let onlineProducts = Dictionary(grouping: online.compactMap { display in
             productPrefix(display.identity).map { (prefix: $0, identity: display.identity) }
@@ -131,6 +133,10 @@ struct DisplayIdentityMigration: Equatable {
         var seenTopologyIDs = Set<Set<String>>()
         updated.topologies = Array(rekeyedTopologies.reversed().filter {
             seenTopologyIDs.insert(Set($0.identities)).inserted
+        }.reversed())
+        var seenLayoutIDs = Set<[String]>()
+        updated.layouts = Array(layouts.reversed().compactMap { $0.rekeyed(using: identity) }.filter {
+            seenLayoutIDs.insert($0.identities).inserted
         }.reversed())
         updated.brightnessGroup = Set(brightnessGroup.map(identity))
         return updated

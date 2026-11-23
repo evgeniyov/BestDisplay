@@ -18,12 +18,14 @@ struct BestDisplay {
     }
 }
 
-private let connectionChanged = Notification.Name("BestDisplayConnectionChanged")
+private let displayReconfigured = Notification.Name("BestDisplayReconfigured")
 private let displayConnectionCallback: CGDisplayReconfigurationCallBack = { id, flags, _ in
-    guard flags.contains(.addFlag) || flags.contains(.removeFlag) else { return }
-    let added = flags.contains(.addFlag)
+    let connectionChanged = flags.contains(.addFlag) || flags.contains(.removeFlag)
+    guard connectionChanged || flags.contains(.movedFlag) || flags.contains(.setMainFlag) else { return }
+    let added = connectionChanged ? flags.contains(.addFlag) : nil
     DispatchQueue.main.async {
-        NotificationCenter.default.post(name: connectionChanged, object: nil, userInfo: ["id": id, "added": added])
+        let connection: [AnyHashable: Any]? = added.map { ["id": id, "added": $0] }
+        NotificationCenter.default.post(name: displayReconfigured, object: nil, userInfo: connection)
     }
 }
 
@@ -66,10 +68,16 @@ private final class ApplicationDelegate: NSObject, NSApplicationDelegate {
                 self?.positionPanel()
             }
         })
-        notifications.append(center.addObserver(forName: connectionChanged, object: nil, queue: .main) { [weak self] notification in
-            guard let id = notification.userInfo?["id"] as? CGDirectDisplayID,
-                  let added = notification.userInfo?["added"] as? Bool else { return }
-            MainActor.assumeIsolated { self?.manager.displayConnectionChanged(id, added: added) }
+        notifications.append(center.addObserver(forName: displayReconfigured, object: nil, queue: .main) { [weak self] notification in
+            let id = notification.userInfo?["id"] as? CGDirectDisplayID
+            let added = notification.userInfo?["added"] as? Bool
+            MainActor.assumeIsolated {
+                if let id, let added {
+                    self?.manager.displayConnectionChanged(id, added: added)
+                } else {
+                    self?.manager.scheduleRefresh()
+                }
+            }
         })
         didRegisterDisplayCallback = CGDisplayRegisterReconfigurationCallback(displayConnectionCallback, nil) == .success
         if let event = kColorSyncDisplayDeviceProfilesNotification?.takeUnretainedValue() as String? {

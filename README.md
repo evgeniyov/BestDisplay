@@ -34,6 +34,8 @@ In a profile card, turn on **Защищать настройки во время
 
 On the **Расположение** (Arrangement) tab, the **Поворот** (Rotation) menu tests the orientation of a compatible external display and reverts after 20 seconds. **Восстанавливать поворот и видеоповтор** (Restore rotation and mirroring) saves the current layout for this set of physical displays, including extended desktop mode. Changes you confirm in BestDisplay update the saved layout.
 
+BestDisplay remembers the main display and arrangement for each set of physical displays with separate desktops and restores them on launch, connection or wake unless an automatic profile takes priority, and **Забыть расположение** (Forget arrangement) clears the saved arrangement for the current set.
+
 On the **Управление** (Controls) tab, you can choose an RGB ICC file for a display and return to the factory profile. **Цвет рабочего стола и ICC** (Desktop color and ICC) changes gamma, contrast and per-channel RGB gain through the display's color table. **Снять фильтр** (Remove filter) restores the previous calibration. **Сохранить ICC…** (Save ICC…) writes a copy of the active profile with the new calibration table, and **Выбрать ICC…** (Choose ICC…) applies it. Sharpening and **3D LUT .cube** import, with values from 0 to 1 and sizes up to 64³, are available in picture-in-picture.
 
 ### Video inputs, brightness and sound

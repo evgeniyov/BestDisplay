@@ -112,6 +112,9 @@ final class DisplayManager {
     private var knownPhysicalIDs = Set<CGDirectDisplayID>()
     private var pendingRestore: PendingDisplayRestore?
     private var verification = DisplayVerificationWindow()
+    private var layoutVerificationDeadline: TimeInterval?
+    private var lastObservedLayout: DisplayLayout?
+    private var layoutRestoreSuppressed = false
     private var failedHDRRestores = Set<String>()
     private var lastDisplayNames: [String: String] = [:]
     private var nextProtectionCheck: TimeInterval = 0
@@ -122,6 +125,7 @@ final class DisplayManager {
     private(set) var isChangingTopology = false
     private var actualTopology: DisplayTopology?
     private var protectedTopologies: [DisplayTopology] = []
+    private var rememberedLayouts: [DisplayLayout] = []
     private(set) var calibrations: [String: Calibration] = [:]
     @ObservationIgnored private var calibrationTables: [String: (base: TransferTables, applied: TransferTables)] = [:]
     private var reconnected = Set<CGDirectDisplayID>()
@@ -142,6 +146,7 @@ final class DisplayManager {
     private let profilesKey = "displayProfiles"
     private let historyKey = "displayHistory"
     private let topologyKey = "protectedDisplayTopologies"
+    private let layoutsKey = "rememberedDisplayLayouts"
     private let migratedHardwareIDsKey = "migratedDisplayHardwareIdentities"
     let brightnessGroupKey = "brightnessGroup"
     var brightnessGroup = Set<String>()
@@ -182,6 +187,34 @@ final class DisplayManager {
         return DisplayProfile.current(in: profiles, displayIDs: Set(screens.map(\.identity)))
     }
 
+    private var currentLayout: DisplayLayout? {
+        guard canCaptureProfile, let main = screens.first(where: \.isMain) else { return nil }
+        return DisplayLayout(main: main.identity,
+                             origins: Dictionary(uniqueKeysWithValues: screens.map { ($0.identity, $0.bounds.origin) }))
+    }
+
+    private func rememberedLayout(for layout: DisplayLayout) -> DisplayLayout? {
+        rememberedLayouts.last { $0.identities == layout.identities }
+    }
+
+    var remembersCurrentLayout: Bool {
+        currentLayout.flatMap(rememberedLayout(for:)) != nil
+    }
+
+    func forgetCurrentLayout() {
+        guard canChangeDisplayConfiguration, let current = currentLayout else { return }
+        rememberedLayouts.removeAll { $0.identities == current.identities }
+        persist(rememberedLayouts, for: layoutsKey)
+        lastObservedLayout = current
+    }
+
+    private func rememberLayout(_ layout: DisplayLayout) {
+        guard rememberedLayout(for: layout) != layout else { return }
+        rememberedLayouts.removeAll { $0.identities == layout.identities }
+        rememberedLayouts.append(layout)
+        persist(rememberedLayouts, for: layoutsKey)
+    }
+
     init(storage: UserDefaults = .standard) {
         self.storage = storage
         panelOverrides = Self.storedPanelSizes(in: storage)
@@ -189,6 +222,10 @@ final class DisplayManager {
         if let data = storage.data(forKey: topologyKey),
            let stored = try? JSONDecoder().decode([DisplayTopology].self, from: data) {
             protectedTopologies = stored
+        }
+        if let data = storage.data(forKey: layoutsKey),
+           let stored = try? JSONDecoder().decode([DisplayLayout].self, from: data) {
+            rememberedLayouts = stored
         }
         if let encoded = storage.data(forKey: rememberedKey),
            let stored = try? JSONDecoder().decode([String: ModeKey].self, from: encoded) {
@@ -308,7 +345,8 @@ final class DisplayManager {
                 legacyUUID: legacyDisplayIdentity(id), name: display?.title, modes: modes)
         }
         let stored = DisplayIdentityMigration(remembered: remembered, rememberedHDR: rememberedHDR, profiles: profiles,
-                                              topologies: protectedTopologies, brightnessGroup: brightnessGroup,
+                                              topologies: protectedTopologies, layouts: rememberedLayouts,
+                                              brightnessGroup: brightnessGroup,
                                               migratedHardwareIDs: migratedHardwareIDs)
         let migrated = stored.migrated(online: online, history: history)
         if migrated.remembered != remembered {
@@ -327,6 +365,10 @@ final class DisplayManager {
             protectedTopologies = migrated.topologies
             persist(protectedTopologies, for: topologyKey)
         }
+        if migrated.layouts != rememberedLayouts {
+            rememberedLayouts = migrated.layouts
+            persist(rememberedLayouts, for: layoutsKey)
+        }
         if migrated.brightnessGroup != brightnessGroup {
             brightnessGroup = migrated.brightnessGroup
             storage.set(brightnessGroup.sorted(), forKey: brightnessGroupKey)
@@ -334,6 +376,13 @@ final class DisplayManager {
         if migrated.migratedHardwareIDs != stored.migratedHardwareIDs {
             storage.set(migrated.migratedHardwareIDs.sorted(), forKey: migratedHardwareIDsKey)
         }
+    }
+
+    private func cancelVerification() {
+        verification.cancel()
+        // Keep the layout deadline so automatic changes still cannot become the saved layout.
+        layoutRestoreSuppressed = true
+        lastObservedLayout = nil
     }
 
     private func scheduleRecheck(at deadline: TimeInterval) {
@@ -383,6 +432,11 @@ final class DisplayManager {
         lastProtectionTopology = actualTopology
 
         if !triggers.isEmpty {
+            lastObservedLayout = nil
+            layoutVerificationDeadline = nil
+            if !triggers.isDisjoint(with: [.launch, .wake, .attached]) {
+                layoutRestoreSuppressed = false
+            }
             var pending = pendingRestore ?? PendingDisplayRestore()
             var targets = !launched || wakeStarted != nil
                 ? identities : Set(physical.lazy.filter { added.contains($0.id) }.map(\.identity))
@@ -423,14 +477,72 @@ final class DisplayManager {
 
         if !topologyProtectionFailed, let protectedTopology, actualTopology != protectedTopology {
             if now >= nextTopologyAttempt {
+                lastObservedLayout = nil
                 restoreProtectedTopology(protectedTopology, before: before)
                 return
             }
             scheduleRecheck(at: nextTopologyAttempt)
         }
 
-        let restored = await restorePendingDisplays(online: online, now: now)
+        let layoutBeforeRestore = currentLayout
+        let (restored, restoreTriggers) = await restorePendingDisplays(online: online, now: now)
         await verifyDisplayModes(now: ProcessInfo.processInfo.systemUptime, excluding: restored)
+        guard pendingRestore == nil, wakeStarted == nil, reconnected.isEmpty, disconnected.isEmpty else {
+            lastObservedLayout = nil
+            return
+        }
+        let layout = currentLayout
+        let isVerifyingLayout = layoutVerificationDeadline != nil || verification.deadline != nil
+        if let deadline = layoutVerificationDeadline {
+            if let layout {
+                restoreRememberedLayout(over: layout, triggers: restoreTriggers)
+            }
+            if ProcessInfo.processInfo.systemUptime < deadline {
+                scheduleRecheck(at: deadline)
+            } else {
+                layoutVerificationDeadline = nil
+            }
+        }
+        if let layout, layout == layoutBeforeRestore,
+           layout.shouldLearn(after: lastObservedLayout, isVerifying: isVerifyingLayout) {
+            rememberLayout(layout)
+        }
+        lastObservedLayout = currentLayout
+    }
+
+    private func restoreRememberedLayout(over current: DisplayLayout, triggers: [DisplayHistoryEntry.Trigger]) {
+        let profile = currentProfile
+        let profileTakesPriority = profile?.automaticallyApplies == true || profile?.protectsConfiguration == true
+        guard let layout = rememberedLayout(for: current),
+              layout.shouldRestore(over: current, profileTakesPriority: profileTakesPriority,
+                                   suppressed: layoutRestoreSuppressed) else { return }
+        let before = observations()
+        let result: String
+        do {
+            let previous = screens.map(DisplayState.init)
+            try applyConfiguration(previous, restoreLayout: true, operation: { config in
+                let online = onlineDisplayIDs()
+                guard Set(online) == Set(previous.map(\.id)) else {
+                    throw DisplayFailure("Набор дисплеев изменился.")
+                }
+                for display in previous {
+                    guard displayIdentity(display.id, among: online) == display.identity,
+                          let origin = layout.origins[display.identity],
+                          (origin == .zero) == (display.identity == layout.main) else {
+                        throw DisplayFailure("Не удалось применить сохранённое расположение.")
+                    }
+                    try setOrigin(config, display.id, origin)
+                }
+            }, verify: { observed in
+                currentLayout == layout && observed.allSatisfy { $0.bounds.origin == layout.origins[$0.identity] }
+            })
+            result = "Восстановлен основной дисплей и расположение."
+        } catch {
+            layoutRestoreSuppressed = true
+            result = "Не удалось восстановить расположение. \(error.localizedDescription)"
+            message = result
+        }
+        addHistory(triggers, before: before, result: result)
     }
 
     private func restoreProtectedTopology(_ topology: DisplayTopology, before: [String: DisplayObservation]) {
@@ -457,15 +569,16 @@ final class DisplayManager {
         }
     }
 
-    private func restorePendingDisplays(online: Set<String>, now: TimeInterval) async -> Set<String> {
-        guard var pending = pendingRestore else { return [] }
+    private func restorePendingDisplays(online: Set<String>, now: TimeInterval) async
+        -> (Set<String>, [DisplayHistoryEntry.Trigger]) {
+        guard var pending = pendingRestore else { return ([], [.verification]) }
         let available = Set(screens.filter { knownPhysicalIDs.contains($0.id) }.map(\.identity))
         let candidates: Set<String>
         switch pending.takeReady(online: online, available: available, at: now) {
         case .waiting(let deadline):
             pendingRestore = pending
             if let deadline { scheduleRecheck(at: deadline) }
-            return []
+            return ([], [.verification])
         case .ready(let ready):
             candidates = ready
         }
@@ -485,10 +598,11 @@ final class DisplayManager {
             pendingRestore = pending
         }
         if !pending.triggers.isDisjoint(with: [.launch, .wake, .attached]) {
-            verification.start(for: restored, now: ProcessInfo.processInfo.systemUptime,
-                               allowsProfile: pending.allowsProfile)
+            let now = ProcessInfo.processInfo.systemUptime
+            verification.start(for: restored, now: now, allowsProfile: pending.allowsProfile)
+            if pending.targets.isEmpty { layoutVerificationDeadline = now + DisplayVerificationWindow.duration }
         }
-        return restored
+        return (restored, triggers)
     }
 
     private func verifyDisplayModes(now: TimeInterval, excluding restored: Set<String>) async {
@@ -579,6 +693,7 @@ final class DisplayManager {
         var results: [String] = []
         defer {
             if !results.isEmpty {
+                refresh()
                 isChangingDisplaySettings = false
                 scheduleRefresh()
             }
@@ -709,7 +824,7 @@ final class DisplayManager {
 
     func setColorProfile(_ color: DisplayColor, for id: CGDirectDisplayID) {
         guard canChangeDisplayConfiguration, let display = screens.first(where: { $0.id == id }) else { return }
-        verification.cancel()
+        cancelVerification()
         do {
             try color.validate()
             try resetCalibration(for: display)
@@ -724,7 +839,7 @@ final class DisplayManager {
 
     func applyCalibration(_ settings: Calibration, to display: Display) {
         guard canChangeDisplayConfiguration, displayIdentity(display.id) == display.identity else { return }
-        verification.cancel()
+        cancelVerification()
         do {
             let current = try TransferTables.read(display.id)
             let base = calibrationTables[display.identity].flatMap { current.matches($0.applied) ? $0.base : nil } ?? current
@@ -748,7 +863,7 @@ final class DisplayManager {
 
     func removeCalibration(from display: Display) {
         guard canChangeDisplayConfiguration else { return }
-        verification.cancel()
+        cancelVerification()
         do {
             try resetCalibration(for: display)
             message = "Ручные настройки цвета рабочего стола отключены."
@@ -910,7 +1025,7 @@ final class DisplayManager {
 
     func changeDisplaySettings(_ operation: () async throws -> Void) async throws {
         guard canChangeDisplayConfiguration else { return }
-        verification.cancel()
+        cancelVerification()
         isChangingDisplaySettings = true
         defer {
             refreshHDRModes()
@@ -1029,7 +1144,7 @@ final class DisplayManager {
         guard canChangeDisplayConfiguration else { return }
         refresh()
         guard let display = screens.first(where: { $0.id == displayID }), canDisconnect(display) else { return }
-        verification.cancel()
+        cancelVerification()
         let state = DisconnectState(display: display, previous: screens.map(DisplayState.init))
         do {
             try DisplayConnection.setEnabled(false, display: display.id, identity: display.identity)
@@ -1043,7 +1158,7 @@ final class DisplayManager {
 
     func reconnectDisplay() async {
         guard canChangeDisplayConfiguration, let state = softwareDisconnect else { return }
-        verification.cancel()
+        cancelVerification()
         isReconnecting = true
         defer {
             isReconnecting = false
@@ -1124,7 +1239,7 @@ final class DisplayManager {
             return source != kCGNullDirectDisplay && (id == displayID || source == displayID)
         }
         guard !targets.isEmpty else { return }
-        verification.cancel()
+        cancelVerification()
         do {
             try configureDisplays { config in
                 for target in targets {
@@ -1162,7 +1277,7 @@ final class DisplayManager {
             message = "В этой версии macOS BestDisplay может не восстановить этот режим HiDPI."
             return message
         }
-        verification.cancel()
+        cancelVerification()
         do {
             if let profile {
                 try applyConfiguration(snapshot, restoreLayout: true, operation: operation,
@@ -1222,8 +1337,8 @@ final class DisplayManager {
             revertPreview(reason: "macOS не применила запрошенные настройки.")
             return
         }
-        verification.cancel()
         _ = collectDisplayEvents(among: actual, now: ProcessInfo.processInfo.systemUptime)
+        cancelVerification()
         if var pending = pendingRestore {
             pending.confirm(modes: Set(preview.expectedModes.keys),
                             changesLayout: !preview.expectedOrigins.isEmpty || preview.expectedMain != nil
@@ -1232,6 +1347,10 @@ final class DisplayManager {
         }
         clearPreview()
         refresh()
+        if (preview.expectedMain != nil || !preview.expectedOrigins.isEmpty), let layout = currentLayout {
+            rememberLayout(layout)
+            lastObservedLayout = layout
+        }
         if preview.profile == nil { updateProtectedProfile() }
         if preview.mirror != nil || preview.rotation != nil { updateProtectedTopology() }
         message = "Настройки применены до выхода из учётной записи macOS."
@@ -1241,6 +1360,7 @@ final class DisplayManager {
 
     func revertPreview(reason: String? = nil) {
         guard let preview else { return }
+        lastObservedLayout = nil
         clearPreview()
         if let rotation = preview.rotation, displayIdentity(rotation.id) == rotation.identity,
            CGDisplayIsOnline(rotation.id) != 0 {
@@ -1330,7 +1450,7 @@ final class DisplayManager {
         guard canChangeDisplayConfiguration, !identity.hasPrefix("session-") else { return }
         if enabled { refresh() }
         guard let display = screens.first(where: { $0.identity == identity }) else { return }
-        verification.cancel()
+        cancelVerification()
         let hdr = enabled ? DisplayHDRMode.status(for: display) : nil
         rememberedSettings.setMode(enabled ? display.current.key : nil, currentHDR: hdr, for: identity)
         persist(remembered, for: rememberedKey)
@@ -1354,7 +1474,7 @@ final class DisplayManager {
             message = "Укажи ширину от 640 до \(maximum) и высоту от 360 до \(maximum) пикселей."
             return
         }
-        verification.cancel()
+        cancelVerification()
         var id: CGDirectDisplayID = 0
         guard let handle = BDMakeVirtualDisplay("BestDisplay Virtual", Self.virtualSerial, UInt32(width), UInt32(height), Double(rate), hiDPI, &id) else {
             message = "macOS не смогла создать виртуальный дисплей."
@@ -1381,7 +1501,7 @@ final class DisplayManager {
 
     func removeVirtual() {
         guard canChangeDisplayConfiguration, let id = virtualDisplay?.id else { return }
-        verification.cancel()
+        cancelVerification()
         let original = displays().filter { $0.id != id && $0.mirrors == kCGNullDirectDisplay }.map(DisplayState.init)
         retiredVirtualIDs.insert(id)
         virtualDisplay = nil

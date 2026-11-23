@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- BestDisplay remembers the main display and arrangement for each set of physical displays and restores them at launch, on connection and after wake, even when a display reports a different serial number.
+
 - A wizard sets the monitor's HDR brightness with a shadow pattern and shows the HDR headroom macOS gives the monitor. Monitor contrast and color gains are locked while HDR is on.
 - BestDisplay restores each display's saved HDR setting at launch, on connection and after wake, even if the display reports a different serial number.
 - Saved display settings follow a monitor when its reported serial number changes and it is the only connected monitor of that model.

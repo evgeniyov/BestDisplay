@@ -545,6 +545,16 @@ struct DisplayPanel: View {
                 .disabled(!manager.canChangeDisplayConfiguration)
             }
         }
+        if manager.remembersCurrentLayout {
+            HStack {
+                Text("Расположение для этих дисплеев запомнено.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Забыть расположение") { manager.forgetCurrentLayout() }
+                    .disabled(!manager.canChangeDisplayConfiguration)
+            }
+        }
         PanelCard(title: "Основной и поворот", detail: "Выбери основной дисплей или поверни изображение.") {
             if display.isMain {
                 Label("Основной дисплей", systemImage: "checkmark.circle")

@@ -48,6 +48,7 @@ struct PendingDisplayRestore {
 }
 
 struct DisplayVerificationWindow {
+    static let duration: TimeInterval = 10
     private var entries: [String: (deadline: TimeInterval, allowsProfile: Bool)] = [:]
 
     var identities: Set<String> { Set(entries.keys) }
@@ -55,7 +56,7 @@ struct DisplayVerificationWindow {
     var deadline: TimeInterval? { entries.values.map(\.deadline).min() }
 
     mutating func start(for identities: Set<String>, now: TimeInterval, allowsProfile: Bool = true) {
-        for identity in identities { entries[identity] = (now + 10, allowsProfile) }
+        for identity in identities { entries[identity] = (now + Self.duration, allowsProfile) }
     }
 
     mutating func expire(at now: TimeInterval) {
